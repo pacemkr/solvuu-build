@@ -750,13 +750,6 @@ let ocamlinit_file ?(postfix=[]) items =
       )
       |> List.sort_uniq ~cmp:String.compare
     );
-    (
-      Graph.Topological.sort graph |>
-      filter_libs |>
-      List.map ~f:(fun (x:lib) ->
-        sprintf "#load \"%s.cma\";;" x.name
-      )
-    );
     [""];
     postfix;
   ]
@@ -1107,6 +1100,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps:(deps@clibs) ~prods:[prod] (fun _ _ ->
+            print_string "one";
             ocamlmklib ~o deps
           )
         );
@@ -1120,6 +1114,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
+            print_string "two";
             ocamlmklib ~o deps
           )
         )
