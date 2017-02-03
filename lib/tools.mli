@@ -53,7 +53,7 @@ type 'a ocaml_compiler_args =
   ?bin_annot:unit ->
   ?c:unit ->
   ?cc:string ->
-  ?cclib:string ->
+  ?cclib:string list ->
   ?ccopt:string ->
   ?color:[`auto | `always | `never] ->
   ?config:unit ->
@@ -206,7 +206,7 @@ val ocamlfind_ocamlopt :
 (** The [~pathL] labeled argument corresponds to ocamlmklib's [-L]
     flag. *)
 val ocamlmklib :
-  ?cclib:string ->
+  ?cclib:string list ->
   ?ccopt:string ->
   ?custom:unit ->
   ?g:unit ->

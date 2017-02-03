@@ -27,7 +27,7 @@ type 'a ocaml_compiler_args =
   ?bin_annot:unit ->
   ?c:unit ->
   ?cc:string ->
-  ?cclib:string ->
+  ?cclib:string list ->
   ?ccopt:string ->
   ?color:[`auto | `always | `never] ->
   ?config:unit ->
@@ -108,7 +108,7 @@ let ocaml_compiler_args_specs
     unit "-bin-annot" bin_annot;
     unit "-c" c;
     string "-cc" cc;
-    string "-cclib" cclib;
+    string_list "-cclib" cclib;
     string "-ccopt" ccopt;
     string "-color" (match color with
       | None -> None
@@ -696,10 +696,11 @@ let ocamlmklib
     ?o ?oc ?verbose
     files
   =
+  let string_no_delim = string ~delim:`None in
   let string = string ~delim:`Space in
   [
     [Some (A "ocamlmklib")];
-    string "-cclib" cclib;
+    string_list ~delim:`Space "-cclib" cclib;
     string "-ccopt" ccopt;
     unit "-custom" custom;
     unit "-g" g;
@@ -709,7 +710,7 @@ let ocamlmklib
     unit "-failsafe" failsafe;
     string "-ldopt" ldopt;
     unit "-linkall" linkall;
-    string "-l" l;
+    string_no_delim "-l" l;
     string_list ~delim:`None "-L" pathL;
     string "-ocamlc" ocamlc;
     string "-ocamlcflags" ocamlcflags;
@@ -717,7 +718,7 @@ let ocamlmklib
     string "-ocamloptflags" ocamloptflags;
     string "-o" o;
     string "-oc" oc;
-    unit "-verbose" verbose;
+    unit "-verbose" (Some ());
     (List.map files ~f:(fun file -> Some (A file)));
   ]
   |> specs_to_command

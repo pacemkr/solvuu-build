@@ -16,7 +16,7 @@ type app = {
   annot : unit option;
   bin_annot : unit option;
   cc : string option;
-  cclib : string option;
+  cclib : string list option;
   ccopt : string option;
   color : [`auto | `always | `never] option;
   g : unit option;
@@ -63,7 +63,7 @@ and lib = {
   annot : unit option;
   bin_annot : unit option;
   cc : string option;
-  cclib : string option;
+  cclib : string list option;
   ccopt : string option;
   color : [`auto | `always | `never] option;
   g : unit option;
@@ -102,7 +102,7 @@ type 'a with_options =
      ?annot:unit
   -> ?bin_annot:unit
   -> ?cc:string
-  -> ?cclib:string
+  -> ?cclib:string list
   -> ?ccopt:string
   -> ?color:[`auto | `always | `never]
   -> ?g:unit
@@ -906,7 +906,7 @@ let build_lib (x:lib) =
       ?pack ?o ?a ?c ?pathI ?package ?for_pack ?custom
       ?annot ?bin_annot ?cc ?cclib ?ccopt
       ?color ?g ?safe_string ?short_paths ?strict_sequence
-      ?thread ?w ?warn_error ?linkall
+      ?thread ?w ?warn_error ?linkall ~verbose:()
   in
 
   let ocamlopt ?pack ?o ?a ?shared ?c ?pathI ?package ?for_pack files =
@@ -922,7 +922,7 @@ let build_lib (x:lib) =
       ?optimize_classic ?optimize2 ?optimize3
       ?remove_unused_arguments ?rounds
       ?safe_string ?short_paths ?strict_sequence
-      ?thread ?unbox_closures ?w ?warn_error ?linkall
+      ?thread ?unbox_closures ?w ?warn_error ?linkall ~verbose:()
   in
 
   (* Abstraction of ocamlc/ocamlopt above. Use above if any options
@@ -1085,6 +1085,8 @@ let build_lib (x:lib) =
         ]
         in
 
+        let cclib = Some ["-lcamlidl"] in
+
         List.iter [`Byte;`Native] ~f:(fun mode ->
           let deps =
             match x.style with
@@ -1099,9 +1101,13 @@ let build_lib (x:lib) =
             sprintf "%s/%s" (dirname x.dir) x.name |>
             Filename.normalize
           in
+          (*let stublib = ("-l" ^ x.name ^ "_stubs") in*)
+          (*let cclib = Some (match cclib with*)
+            (*| Some libs -> stublib :: libs*)
+            (*| None -> [stublib])*)
+          (*in*)
           Rule.rule ~deps:(deps@clibs) ~prods:[prod] (fun _ _ ->
-            print_string "one";
-            ocamlmklib ~o deps
+            ocamlmklib ?cclib ~o deps
           )
         );
 
@@ -1114,8 +1120,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
-            print_string "two";
-            ocamlmklib ~o deps
+            ocamlmklib  ?cclib ~o deps
           )
         )
       )
