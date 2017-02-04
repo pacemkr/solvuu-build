@@ -750,13 +750,6 @@ let ocamlinit_file ?(postfix=[]) items =
       )
       |> List.sort_uniq ~cmp:String.compare
     );
-    (
-      Graph.Topological.sort graph |>
-      filter_libs |>
-      List.map ~f:(fun (x:lib) ->
-        sprintf "#load \"%s.cma\";;" x.name
-      )
-    );
     [""];
     postfix;
   ]
