@@ -1096,7 +1096,11 @@ let build_lib (x:lib) =
             | `Basic          ->
               let suffix = obj_suffix mode in
               (* Does order matter here? *)
-              List.map ml_files ~f:(replace_suffix_exn ~old:".ml" ~new_:suffix)
+              (*List.fold_right ml_files ~init:[] ~f:(fun file deps ->*)
+                  (*(replace_suffix_exn ~old:".ml" ~new_:suffix file) :: deps*)
+                (*)*)
+              (* Needs to be in dependcy order. *)
+              List.rev_map ml_files ~f:(replace_suffix_exn ~old:".ml" ~new_:suffix)
           in
           let prod = ml_lib mode in
           let o =
