@@ -1104,7 +1104,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps:(deps@clibs) ~prods:[prod] (fun _ _ ->
-            ocamlmklib ?verbose ~o deps
+            ocamlmklib ?verbose ?linkall ~o deps
           )
         );
 
@@ -1117,7 +1117,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
-            ocamlmklib ?verbose ~o deps
+            ocamlmklib ?verbose ?linkall ~o deps
           )
         )
       )
