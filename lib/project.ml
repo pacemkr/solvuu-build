@@ -45,6 +45,7 @@ type app = {
   unbox_closures : unit option;
   w : string option;
   warn_error : string option;
+  verbose : unit option;
 }
 
 and lib = {
@@ -92,6 +93,7 @@ and lib = {
   unbox_closures : unit option;
   w : string option;
   warn_error : string option;
+  verbose : unit option;
 
   linkall : unit option;
 }
@@ -131,6 +133,7 @@ type 'a with_options =
   -> ?unbox_closures:unit
   -> ?w:string
   -> ?warn_error:string
+  -> ?verbose:unit
   -> 'a
 
 let lib
@@ -144,7 +147,7 @@ let lib
     ?optimize_classic ?optimize2 ?optimize3
     ?remove_unused_arguments ?rounds
     ?safe_string ?short_paths ?strict_sequence
-    ?thread ?unbox_closures ?w ?warn_error ?linkall
+    ?thread ?unbox_closures ?w ?warn_error ?verbose ?linkall
     ?(internal_deps=[]) ?(findlib_deps=[])
     ?ml_files ?mli_files ?c_files ?h_files
     ?(build_plugin=true) ~pkg ~style ~dir name
@@ -179,7 +182,7 @@ let lib
     optimize_classic; optimize2; optimize3;
     remove_unused_arguments; rounds;
     safe_string; short_paths; strict_sequence;
-    thread; unbox_closures; w; warn_error; linkall;
+    thread; unbox_closures; w; warn_error; verbose; linkall;
   }
 
 let app
@@ -193,7 +196,7 @@ let app
     ?optimize_classic ?optimize2 ?optimize3
     ?remove_unused_arguments ?rounds
     ?safe_string ?short_paths ?strict_sequence
-    ?thread ?unbox_closures ?w ?warn_error
+    ?thread ?unbox_closures ?w ?warn_error ?verbose
     ?(internal_deps=[]) ?(findlib_deps=[])
     ~file name
   =
@@ -209,7 +212,7 @@ let app
     optimize_classic; optimize2; optimize3;
     remove_unused_arguments; rounds;
     safe_string; short_paths; strict_sequence;
-    thread; unbox_closures; w; warn_error;
+    thread; unbox_closures; w; warn_error; verbose;
   }
 
 
@@ -896,6 +899,7 @@ let build_lib (x:lib) =
   let thread = x.thread in
   let w = x.w in
   let warn_error = x.warn_error in
+  let verbose = x.verbose in
   let linkall = x.linkall in
 
   (****************************************************************************)
@@ -906,7 +910,7 @@ let build_lib (x:lib) =
       ?pack ?o ?a ?c ?pathI ?package ?for_pack ?custom
       ?annot ?bin_annot ?cc ?cclib ?ccopt
       ?color ?g ?safe_string ?short_paths ?strict_sequence
-      ?thread ?w ?warn_error ?linkall
+      ?thread ?w ?warn_error ?verbose ?linkall
   in
 
   let ocamlopt ?pack ?o ?a ?shared ?c ?pathI ?package ?for_pack files =
@@ -922,7 +926,7 @@ let build_lib (x:lib) =
       ?optimize_classic ?optimize2 ?optimize3
       ?remove_unused_arguments ?rounds
       ?safe_string ?short_paths ?strict_sequence
-      ?thread ?unbox_closures ?w ?warn_error ?linkall
+      ?thread ?unbox_closures ?w ?warn_error ?verbose ?linkall
   in
 
   (* Abstraction of ocamlc/ocamlopt above. Use above if any options
@@ -1100,7 +1104,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps:(deps@clibs) ~prods:[prod] (fun _ _ ->
-            ocamlmklib ~o deps
+            ocamlmklib ?verbose ~o deps
           )
         );
 
@@ -1113,7 +1117,7 @@ let build_lib (x:lib) =
             Filename.normalize
           in
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
-            ocamlmklib ~o deps
+            ocamlmklib ?verbose ~o deps
           )
         )
       )
@@ -1153,6 +1157,7 @@ let build_app (x:app) =
   let unbox_closures = x.unbox_closures in
   let w = x.w in
   let warn_error = x.warn_error in
+  let verbose = x.verbose in
   let package = findlib_deps_all (App x) in
   let pathI =
     internal_deps_all (App x) |>
@@ -1168,7 +1173,7 @@ let build_app (x:app) =
         ?o
         ?annot ?bin_annot ?cc ?cclib ?ccopt ?color ?g
         ?safe_string ?short_paths ?strict_sequence
-        ?thread ?w ?warn_error
+        ?thread ?w ?warn_error ?verbose
         ~package ~pathI ~linkpkg:()
     | `Native ->
       ocamlfind_ocamlopt files
@@ -1183,7 +1188,7 @@ let build_app (x:app) =
         ?optimize_classic ?optimize2 ?optimize3
         ?remove_unused_arguments ?rounds
         ?safe_string ?short_paths ?strict_sequence
-        ?thread ?unbox_closures ?w ?warn_error
+        ?thread ?unbox_closures ?w ?warn_error ?verbose
         ~package ~pathI ~linkpkg:()
   in
   List.iter [`Byte; `Native] ~f:(fun mode ->

@@ -88,6 +88,7 @@ type app = {
   unbox_closures : unit option;
   w : string option;
   warn_error : string option;
+  verbose : unit option;
 }
 
 and lib = {
@@ -135,6 +136,7 @@ and lib = {
   unbox_closures : unit option;
   w : string option;
   warn_error : string option;
+  verbose : unit option;
 
   linkall : unit option;
 }
@@ -174,6 +176,7 @@ type 'a with_options =
   -> ?unbox_closures:unit
   -> ?w:string
   -> ?warn_error:string
+  -> ?verbose:unit
   -> 'a
 
 
