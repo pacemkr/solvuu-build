@@ -864,6 +864,7 @@ let build_deps_cmi_files build ~pathI ~package file_base_of_module file =
 
 let build_lib (x:lib) =
 
+
   (****************************************************************************)
   (* Parameters *)
   (****************************************************************************)
@@ -1060,6 +1061,7 @@ let build_lib (x:lib) =
         ()
   );
 
+
   ((* .cmo/.cmx,.o -> .cma/.cmxa *)
     let ml_packed_obj mode = path_of_pack x ~suffix:(obj_suffix mode) in
     let ml_lib mode = path_of_lib x ~suffix:(lib_suffix mode) in
@@ -1083,7 +1085,11 @@ let build_lib (x:lib) =
       )
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
-        let linker = Link.Lib.create ~package ~ml_files in
+        Link.Lib.(
+          let linker = create ~o_files:None ~package ~ml_files in
+          List.iter ~f:print_endline linker.ocamlmklib_opts.pathL;
+        );
+
 (*
         List.iter ~f:Rule.rule Link.Lib.(
 
