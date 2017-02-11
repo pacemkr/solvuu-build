@@ -228,6 +228,8 @@ val ocamlmklib :
   Pathname.t list ->
   Command.t
 
+val run_ocamlfind_query : string -> string
+
 
 (******************************************************************************)
 (** {2 ocamldep} *)

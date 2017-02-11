@@ -723,6 +723,17 @@ let ocamlmklib
   |> specs_to_command
 
 
+let run_ocamlfind_query package =
+  let cmd = S [
+     A "ocamlfind";
+     A "query";
+     A package;
+  ] in
+  Command.string_of_command_spec cmd |>
+  Ocamlbuild_pack.My_unix.run_and_read |>
+  String.trim
+
+
 (******************************************************************************)
 (** {2 ocamldep} *)
 (******************************************************************************)
