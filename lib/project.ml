@@ -1083,6 +1083,32 @@ let build_lib (x:lib) =
       )
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
+        let linker = Link.Lib.create ~package ~ml_files in
+(*
+        List.iter ~f:Rule.rule Link.Lib.(
+
+            link ?o_files ~package ~ml_files |>
+
+
+            (* TODO: Done automatically *)
+            (*       Include search paths for mklib manually, since it doesnt support -package *)
+
+            autolink
+              ~cclib:"ocamlfuse"
+              ~dllib:"ocamlfuse" |>
+            (***)
+
+
+            (* Project specific *)
+            include_clib ~l:"camlidl" |>
+            reference_clib ~l:"fuse" |>
+
+            custom_link |>
+
+            to_rules
+          );
+
+*)
         let clibs = [
           sprintf "%s/dll%s.so" (dirname x.dir) x.name;
           sprintf "%s/lib%s.a" (dirname x.dir) x.name;
