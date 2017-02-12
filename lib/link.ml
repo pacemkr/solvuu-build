@@ -15,11 +15,19 @@ module Lib = struct
   }
 
 
+  let add_ocamlmklib_pathL t path =
+    (* TODO: Do not link to ocaml std lib. *)
+    let pathL = t.ocamlmklib_opts.pathL in
+    let pathL = if not (List.mem path ~set:pathL) then
+        path :: pathL else pathL
+    in
+    {t with ocamlmklib_opts = {
+         t.ocamlmklib_opts with pathL
+       }}
+
+
   let link_pkg t package =
-    let pkg_path = Tools.run_ocamlfind_query package in
-    let opts = t.ocamlmklib_opts in
-    let ocamlmklib_opts = {opts with pathL = pkg_path :: opts.pathL} in
-    {t with ocamlmklib_opts}
+    add_ocamlmklib_pathL t (Tools.run_ocamlfind_query package)
 
 
   let create ~package ~o_files ~ml_files =
