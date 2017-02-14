@@ -1117,6 +1117,7 @@ let build_lib (x:lib) =
             sprintf "%s/%s" (dirname x.dir) x.name |>
             Filename.normalize
           in
+          print_endline (dirname x.dir);
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
             ocamlmklib ?verbose ~o deps
           )

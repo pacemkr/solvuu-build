@@ -689,6 +689,29 @@ let ocamlfind_ocamlopt
 (******************************************************************************)
 (** {2 ocamlmklib} *)
 (******************************************************************************)
+type 'a ocamlmklib_args =
+  ?cclib:string ->
+  ?ccopt:string ->
+  ?custom:unit ->
+  ?g:unit ->
+  ?dllpath:string ->
+  ?framework:string ->
+  ?pathI:string list ->
+  ?failsafe:unit ->
+  ?ldopt:string ->
+  ?linkall:unit ->
+  ?l:string list ->
+  ?pathL:string list ->
+  ?ocamlc:string ->
+  ?ocamlcflags:string ->
+  ?ocamlopt:string ->
+  ?ocamloptflags:string ->
+  ?o:string ->
+  ?oc:string ->
+  ?verbose:unit ->
+  'a
+
+
 let ocamlmklib
     ?cclib ?ccopt ?custom ?g ?dllpath ?framework ?pathI
     ?failsafe ?ldopt ?linkall ?l ?pathL
@@ -709,7 +732,7 @@ let ocamlmklib
     unit "-failsafe" failsafe;
     string "-ldopt" ldopt;
     unit "-linkall" linkall;
-    string "-l" l;
+    string_list ~delim:`None "-l" l;
     string_list ~delim:`None "-L" pathL;
     string "-ocamlc" ocamlc;
     string "-ocamlcflags" ocamlcflags;
