@@ -203,9 +203,7 @@ val ocamlfind_ocamlopt :
 (** {2 ocamlmklib} *)
 (******************************************************************************)
 
-(** The [~pathL] labeled argument corresponds to ocamlmklib's [-L]
-    flag. *)
-val ocamlmklib :
+type 'a ocamlmklib_args =
   ?cclib:string ->
   ?ccopt:string ->
   ?custom:unit ->
@@ -216,8 +214,8 @@ val ocamlmklib :
   ?failsafe:unit ->
   ?ldopt:string ->
   ?linkall:unit ->
-  ?l:string ->
-  ?pathL:string list ->
+  ?l:string list ->
+  ?pathL:string list -> (* ocamlmklib's [-L] flag. *)
   ?ocamlc:string ->
   ?ocamlcflags:string ->
   ?ocamlopt:string ->
@@ -225,8 +223,10 @@ val ocamlmklib :
   ?o:string ->
   ?oc:string ->
   ?verbose:unit ->
-  Pathname.t list ->
-  Command.t
+  'a
+
+
+val ocamlmklib : (Pathname.t list -> Command.t) ocamlmklib_args
 
 val run_ocamlfind_query : string -> string
 

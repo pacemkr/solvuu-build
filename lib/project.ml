@@ -1087,12 +1087,14 @@ let build_lib (x:lib) =
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
         Link.Lib.(
-          let link =
-            create ~o_files:None ~ml_files |>
-            link_packages ~packages:package |>
-            link_clibs ~clibs:x.c_deps in
-            List.iter ~f:print_endline link.ocamlmklib_opts.l;
-            print_int (List.length link.ocamlmklib_opts.pathL);
+          let o_files = Some (List.map c_files ~f:(fun c_file ->
+            sprintf "%s.o" (chop_suffix c_file ".c") ))
+          in
+
+          create ?o_files ~ml_files ~dir:x.dir ~name:x.name |>
+          link_packages ~packages:package |>
+          link_clibs ~clibs:x.c_deps |>
+          install_rules
         );
 
 (*
@@ -1118,7 +1120,6 @@ let build_lib (x:lib) =
             to_rules
           );
 
-*)
         let clibs = [
           sprintf "%s/dll%s.so" (dirname x.dir) x.name;
           sprintf "%s/lib%s.a" (dirname x.dir) x.name;
@@ -1156,11 +1157,13 @@ let build_lib (x:lib) =
             sprintf "%s/%s" (dirname x.dir) x.name |>
             Filename.normalize
           in
+          print_endline (dirname x.dir);
           Rule.rule ~deps ~prods:clibs (fun _ _ ->
             ocamlmklib ?verbose ?linkall ~o deps
           )
         )
       )
+*)
   )
 ;;
 
