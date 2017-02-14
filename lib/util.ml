@@ -205,6 +205,8 @@ module List = struct
   let sort_uniq ~cmp l =
     sort_uniq cmp l [@@ocaml.warning "-6"]
 
+  let cons_uniq x l = if List.mem x l then l else x :: l
+
   let is_uniq ~cmp (l : 'a list) : bool =
     let m = length l in
     let n = length (sort_uniq ~cmp l) in

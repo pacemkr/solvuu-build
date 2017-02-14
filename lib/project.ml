@@ -52,6 +52,7 @@ and lib = {
   name : string;
   internal_deps : item list;
   findlib_deps : pkg list;
+  c_deps: string list;
   style : [ `Basic | `Pack of string ];
   dir : string;
   ml_files : string list;
@@ -148,7 +149,7 @@ let lib
     ?remove_unused_arguments ?rounds
     ?safe_string ?short_paths ?strict_sequence
     ?thread ?unbox_closures ?w ?warn_error ?verbose ?linkall
-    ?(internal_deps=[]) ?(findlib_deps=[])
+    ?(internal_deps=[]) ?(findlib_deps=[]) ?(c_deps=[])
     ?ml_files ?mli_files ?c_files ?h_files
     ?(build_plugin=true) ~pkg ~style ~dir name
   =
@@ -170,7 +171,7 @@ let lib
   let c_files = select_files ".c" ?add_replace:c_files in
   let h_files = select_files ".h" ?add_replace:h_files in
   Lib {
-    name; internal_deps; findlib_deps; style;
+    name; internal_deps; findlib_deps; c_deps; style;
     dir; ml_files; mli_files; c_files; h_files; pkg; build_plugin;
     annot; bin_annot; cc; cclib; ccopt; color; g;
     inline;

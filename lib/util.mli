@@ -60,6 +60,8 @@ module List : sig
 
   val sort_uniq : cmp:('a -> 'a -> int) -> 'a list -> 'a list
 
+  val cons_uniq : 'a -> 'a list -> 'a list
+
   (** [is_uniq cmp l] returns true if every item in list [l] is unique
       according to [cmp]. *)
   val is_uniq : cmp:('a -> 'a -> int) -> 'a list -> bool

@@ -95,6 +95,7 @@ and lib = {
   name : string;
   internal_deps : item list;
   findlib_deps : pkg list;
+  c_deps: string list;
   style : [ `Basic | `Pack of string ];
   dir : string;
   ml_files : string list;
@@ -195,6 +196,7 @@ val lib : (
      ?linkall:unit
   -> ?internal_deps:item list
   -> ?findlib_deps:pkg list
+  -> ?c_deps:string list
   -> ?ml_files:[`Add of string list | `Replace of string list]
   -> ?mli_files:[`Add of string list | `Replace of string list]
   -> ?c_files:[`Add of string list | `Replace of string list]
