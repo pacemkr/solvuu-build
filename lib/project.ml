@@ -1063,7 +1063,25 @@ let build_lib (x:lib) =
   );
 
 
+  Link.Lib.(
+    let o_files = Some (List.map c_files ~f:(fun c_file ->
+        sprintf "%s.o" (chop_suffix c_file ".c") ))
+    in
+
+    (* TODO:
+     *  - Pass cmx files.
+     *  - Build .so/.a, .cma, .cmxa in three separate steps.
+     *  - For "native plugins" .cmxs we may need to build using ocamlc directly.
+     *    Or, install_rules_targeting_native_plugin which passes through extra arguments to ocamlopt. *)
+    create ?o_files ~ml_files ~dir:x.dir ~name:x.name |>
+    link_packages ~packages:package |>
+    link_clibs ~clibs:x.c_deps |>
+    install_rules
+  );
+
+
   ((* .cmo/.cmx,.o -> .cma/.cmxa *)
+
     let ml_packed_obj mode = path_of_pack x ~suffix:(obj_suffix mode) in
     let ml_lib mode = path_of_lib x ~suffix:(lib_suffix mode) in
     match c_files with
@@ -1086,16 +1104,6 @@ let build_lib (x:lib) =
       )
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
-        Link.Lib.(
-          let o_files = Some (List.map c_files ~f:(fun c_file ->
-            sprintf "%s.o" (chop_suffix c_file ".c") ))
-          in
-
-          create ?o_files ~ml_files ~dir:x.dir ~name:x.name |>
-          link_packages ~packages:package |>
-          link_clibs ~clibs:x.c_deps |>
-          install_rules
-        );
 
 (*
         List.iter ~f:Rule.rule Link.Lib.(
