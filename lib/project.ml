@@ -1084,44 +1084,22 @@ let build_lib (x:lib) =
       )
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
-        let clibs = [
-          sprintf "%s/dll%s.so" (dirname x.dir) x.name;
-          sprintf "%s/lib%s.a" (dirname x.dir) x.name;
-        ]
-        in
+      Link.Lib.(
+          let o_files = Some (List.map c_files ~f:(fun c_file ->
+              sprintf "%s.o" (chop_suffix c_file ".c") ))
+          in
 
-        List.iter [`Byte;`Native] ~f:(fun mode ->
-          let deps =
-            match x.style with
-            | `Pack _ -> [ ml_packed_obj mode]
-            | `Basic          ->
-              let suffix = obj_suffix mode in
-              (* Does order matter here? *)
-              List.map ml_files ~f:(replace_suffix_exn ~old:".ml" ~new_:suffix)
-          in
-          let prod = ml_lib mode in
-          let o =
-            sprintf "%s/%s" (dirname x.dir) x.name |>
-            Filename.normalize
-          in
-          Rule.rule ~deps:(deps@clibs) ~prods:[prod] (fun _ _ ->
-            ocamlmklib ?verbose ~o deps
-          )
-        );
+          (* TODO:
+           *  - Pass cmx files.
+           *  - Build .so/.a, .cma, .cmxa in three separate steps.
+           *  - For "native plugins" .cmxs we may need to build using ocamlc directly.
+           *    Or, install_rules_targeting_native_plugin which passes through extra arguments to ocamlopt. *)
+          create ?o_files ~ml_files ~dir:x.dir ~name:x.name |>
+          link_packages ~packages:package |>
+          link_clibs ~clibs:x.c_deps |>
+          install_rules
+      );
 
-        ((* .c -> .o *)
-          let deps = List.map c_files ~f:(fun c_file ->
-            sprintf "%s.o" (chop_suffix c_file ".c") )
-          in
-          let o =
-            sprintf "%s/%s" (dirname x.dir) x.name |>
-            Filename.normalize
-          in
-          print_endline (dirname x.dir);
-          Rule.rule ~deps ~prods:clibs (fun _ _ ->
-            ocamlmklib ?verbose ~o deps
-          )
-        )
       )
   )
 ;;
