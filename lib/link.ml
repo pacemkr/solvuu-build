@@ -16,7 +16,9 @@ module Lib = struct
   type files = {
     output: string;
     cmo_files: string list;
+    cmx_files: string list;
     cma_file: string;
+    cmxa_file: string;
     stubs: stubs option;
   }
 
@@ -46,9 +48,15 @@ module Lib = struct
     (* Link order matters for libraries.
      * `.cmo` files need to be listed in dependency order for ocamlmklib
      * or an invalid library will be produced. *)
-    let cmo_files =
+
+    let (cmo_files, cmx_files) = (
       Tools.run_ocamlfind_ocamldep_sort ml_files |>
-      List.map ~f:(replace_suffix_exn ~old:".ml" ~new_:".cmo") in
+      List.map ~f:(fun mlf ->
+        let rs = replace_suffix_exn ~old:".ml" mlf in
+        (rs ~new_:".cmo", rs ~new_:".cmx")
+      )) |>
+      List.split
+    in
 
     let stubs = match o_files with
       | Some o_files -> Some {
@@ -59,8 +67,9 @@ module Lib = struct
       | None -> None in
 
     let files = {
-      cmo_files; stubs;
+      cmo_files; cmx_files; stubs;
       cma_file = sprintf "%s/%s.cma" dir name;
+      cmxa_file = sprintf "%s/%s.cmxa" dir name;
       output = sprintf "%s/%s" dir name;
     } in
 
@@ -88,7 +97,18 @@ module Lib = struct
   (* - Pass cmx files. *)
   (* - For "native plugins" .cmxs we may need to build using ocamlc directly. *)
   (*   Or, install_rules_targeting_native_plugin which passes through extra arguments to ocamlopt. *1) *)
-  let install_rules ({output = o; stubs; cmo_files; cma_file}, {pathL; l}) =
+  let install_rules (
+      {
+        output = o;
+        stubs;
+        cmo_files;
+        cmx_files;
+        cma_file;
+        cmxa_file;
+      }, {
+        pathL;
+        l;
+      }) =
     match stubs with
     | Some {o_files; a_file; dll_file} ->
       (* Build .so and .a files. *)
@@ -99,7 +119,12 @@ module Lib = struct
 
       (* Build .cma file. *)
       Rule.rule ~deps:(stub_libs@cmo_files) ~prods:[cma_file] (fun _ _ ->
-          Tools.ocamlmklib ~o ~pathL ~l cmo_files
+          Tools.ocamlmklib ~verbose:() ~o ~pathL ~l cmo_files
+        );
+
+      (* Build .cmxa file. *)
+      Rule.rule ~deps:(stub_libs@cmx_files) ~prods:[cmxa_file] (fun _ _ ->
+          Tools.ocamlmklib ~verbose:() ~o ~pathL ~l cmx_files
         );
 
     | None -> ()
