@@ -2,6 +2,20 @@ open Printf
 open Util
 open Util.Filename
 
+
+module Deps : sig
+  type t
+end =
+struct
+  type t = {
+    dir : string;
+    name : string;
+    deps : string list;
+  }
+
+
+end
+
 module Lib = struct
   (* TODO: May not be such a great idea to use a record here?
    *       Since this one structure will be used to generate multiple rules. *)
@@ -14,6 +28,7 @@ module Lib = struct
   type lib_info = {
     dir : string;
     name : string;
+    sorted_deps : string list;
   }
 
   type t = lib_info * ocamlmklib_opts
@@ -22,10 +37,21 @@ module Lib = struct
   let stdlib_path = Tools.run_ocamlfind_query "stdlib"
 
 
-  let create ~dir ~name = (
-    {dir = dirname dir; name},
+  let create ~ml_files ~dir ~name = (
+    let sorted_deps =
+        Tools.run_ocamlfind_ocamldep_sort ml_files |>
+        List.map ~f:(chop_suffix ".ml")
+    in
+    { dir = dirname dir; name;
+      sorted_deps },
     {pathL = []; l = []}
   )
+
+  let ocamldep_sort files =
+    let ext = extension (List.hd files) in
+    List.map ~f:(replace_suffix_exn ~old:ext ~new_:".ml") files |>
+    Tools.run_ocamlfind_ocamldep_sort |>
+    List.map ~f:(replace_suffix_exn ~old:".ml" ~new_:ext)
 
 
   let add_ocamlmklib_l (files, opts) clib =
@@ -48,31 +74,50 @@ module Lib = struct
     List.fold_left ~f:add_ocamlmklib_l ~init:t clibs
 
 
-  let output {dir; name} =
+  let output_of {dir; name; _} =
     sprintf "%s/%s" dir name
 
 
-  let stub_prods {dir; name} = [
-    sprintf "%s/lib%s.a" dir name;
-    sprintf "%s/dll%s.so" dir name;
-  ]
+  let prods_of {dir; name; _} = function
+    | `Clib -> [
+        sprintf "%s/lib%s.a" dir name;
+        sprintf "%s/dll%s.so" dir name;
+      ]
+    | `Bytecode -> [sprintf "%s/%s.cma" dir name ]
+    | `Native ->  [sprintf "%s/%s.cmxa" dir name]
+ (* | `Shared -> ... *)
 
 
-  let bytecode_prods {dir; name} = [
-    sprintf "%s/%s.cma" dir name
-  ]
-
-  let native_prods {dir; name} = [
-    sprintf "%s/%s.cmxa" dir name
-  ]
+  let deps_of libi = function
+    | `Bytecode -> (prods_of libi `Clib)
 
 
   (* Build [.so] and [.a] files. *)
   (* TODO: Warn on missing flags that are likely to break the library. *)
-  let install_stub_rules (info, {pathL; l}) ~o_files =
-    Rule.rule ~deps:o_files ~prods:(stub_prods info) (fun _ _ ->
-        Tools.ocamlmklib ~o:(output info) ~pathL ~l o_files
+  let install_stub_rules (libi, {pathL; l}) ~o_files =
+    Rule.rule ~deps:o_files ~prods:(prods_of libi `Clib) (fun _ _ ->
+        Tools.ocamlmklib ~o:(output_of libi) ~pathL ~l o_files
       )
+
+
+  (* let install_lib_rules {pathL; l} ~ext files kind = *)
+  (*   let files = ocamldep_sort files in *)
+  (*   match kind *)
+  (*   | `Byte -> *)
+
+
+
+  let install_lib_rules (libi, {pathL; l}) ~deps = function
+    | `Cma ->
+      let deps = deps in
+      Rule.rule ~deps ~prods:(prods info `Byte) (fun _ _ ->
+          Tools.ocamlmklib ~verbose:() ~o:(output info) ~pathL ~l cmo_files
+        )
+
+
+
+  let install_bytecode_lib_rules2 = install_lib_rules `Cma
+
 
   (* Build [.cma] file. *)
   let install_bytecode_lib_rules (info, {pathL; l}) ~ml_files =
@@ -80,8 +125,8 @@ module Lib = struct
       Tools.run_ocamlfind_ocamldep_sort ml_files |>
       List.map ~f:(replace_suffix_exn ~old:".ml" ~new_:".cmo")
     in
-    let deps = (stub_prods info)@cmo_files in
-    Rule.rule ~deps ~prods:(bytecode_prods info) (fun _ _ ->
+    let deps = (prods info `Clib)@cmo_files in
+    Rule.rule ~deps ~prods:(prods info `Byte) (fun _ _ ->
         Tools.ocamlmklib ~verbose:() ~o:(output info) ~pathL ~l cmo_files
       )
 
@@ -92,8 +137,8 @@ module Lib = struct
       Tools.run_ocamlfind_ocamldep_sort ml_files |>
       List.map ~f:(replace_suffix_exn ~old:".ml" ~new_:".cmx")
     in
-    let deps = (stub_prods info)@cmx_files in
-    Rule.rule ~deps ~prods:(native_prods info) (fun _ _ ->
+    let deps = (prods info `Clib)@cmx_files in
+    Rule.rule ~deps ~prods:(prods info `Native) (fun _ _ ->
         Tools.ocamlmklib ~verbose:() ~o:(output info) ~pathL ~l cmx_files
       )
 end
