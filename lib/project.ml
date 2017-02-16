@@ -1085,23 +1085,22 @@ let build_lib (x:lib) =
     | _ -> ( (* There is C code. Call ocamlmklib. *)
 
       Link.Lib.(
-          let o_files = List.map c_files ~f:(fun c_file ->
-              sprintf "%s.o" (chop_suffix c_file ".c") )
-          in
+
+        let inf = Info.create ~dir:x.dir ~name:x.name ~ml_files ~c_files in
 
           (* TODO:
            *  - Pass cmx files.
            *  - Build .so/.a, .cma, .cmxa in three separate steps.
            *  - For "native plugins" .cmxs we may need to build using ocamlc directly.
            *    Or, install_rules_targeting_native_plugin which passes through extra arguments to ocamlopt. *)
-          let lnk =
-            create ~dir:x.dir ~name:x.name |>
-            link_packages ~packages:package |>
-            link_clibs ~clibs:x.c_deps
-          in
-          install_stub_rules lnk ~o_files;
-          install_bytecode_lib_rules lnk ~ml_files;
-          install_native_lib_rules lnk ~ml_files;
+        let lnk =
+          create inf |>
+          link_packages ~packages:package |>
+          link_clibs ~clibs:x.c_deps
+        in
+        install_stub_rules lnk;
+        install_bytecode_lib_rules lnk;
+        install_native_lib_rules lnk;
       );
 
       )
