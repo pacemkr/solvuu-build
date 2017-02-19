@@ -102,26 +102,28 @@ module Compile = struct
   }
 
   (* TODO: Validate file type. *)
-  let mli_file ?internal_deps:(internal_deps=[]) file =
+  let mli_file
+      ?pathI
+      ?package
+      ?internal_deps:(internal_deps=[])
+      ?thread
+      file
+    =
     let open File in
     let cmi_file = replace_extension_exn ~old:Mli ~new_:Cmi file in
     let spec = Util.Spec.([
-      string ~delim:`Space "-o" (Some (path cmi_file))
-    ]) in
+        string_list ~delim:`Space "-package" package;
+        string ~delim:`Space "-o" (Some (path cmi_file));
+        unit "-thread" thread;
+        string_list ~delim:`Space "-I" pathI;
+      ])
+    in
     {
      deps = file :: internal_deps;
      prods = [cmi_file];
      tool = Ocamlc spec;
      file;
     }
-
-
-  (* let file file = *)
-  (*   let open File in *)
-  (*   match typ file with *)
-  (*   | Mli -> mli_file file *)
-  (*   | _ -> raise Not_found *)
-
 
 
   let install_rules {deps; prods; tool; file} =
