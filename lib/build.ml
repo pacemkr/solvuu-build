@@ -1,3 +1,4 @@
+open Ocamlbuild_plugin
 open Printf
 open Util
 open Util.Filename
@@ -24,6 +25,8 @@ module File : sig
   val is_of_typ : t -> typ:typ -> bool
   val replace_extension_exn : t -> old:typ -> new_:typ -> t
   val filter_by : typ:typ -> t list -> t list
+  val typ : t -> typ
+  val path : t -> string
 
 end = struct
 
@@ -61,7 +64,11 @@ end = struct
   let create typ path =
     (typ, path)
 
-  let is_of_typ (typ2, _) ~typ = typ = typ2
+  let is_of_typ (typ2,_) ~typ = typ = typ2
+
+  let typ (typ,_) = typ
+
+  let path (_,path) = path
 
   let filter_by ~typ files =
     List.filter ~f:(is_of_typ ~typ) files
@@ -71,37 +78,62 @@ end = struct
 end
 
 
+module BTools = struct
+  type t = spec option list list
+
+  let ocamlc spec files =
+    let open Util.Spec in
+    [[Some (A "ocamlfind"); Some (A "ocamlc")]]
+    @spec
+    @[List.map files ~f:(fun file -> Some (A file))]
+    |> specs_to_command
+end
 
 
 module Compile = struct
-  type opts = {
-    a : string;
-  }
-
   type tool =
-    | Ocamlc of opts
-    | Ocamlopt of opts
+    | Ocamlc of BTools.t
 
   type t = {
     deps : File.t list;
-    files : File.t list;
+    file : File.t;
     prods : File.t list;
     tool : tool;
   }
 
-
-  let mli_files ~deps ~files =
+  (* TODO: Validate file type. *)
+  let mli_file ?internal_deps:(internal_deps=[]) file =
     let open File in
-    let files = filter_by ~typ:Mli files in
-    let prods = List.map ~f:(replace_extension_exn ~old:Mli ~new_:Cmi) files in
+    let cmi_file = replace_extension_exn ~old:Mli ~new_:Cmi file in
+    let spec = Util.Spec.([
+      string ~delim:`Space "-o" (Some (path cmi_file))
+    ]) in
     {
-     deps;
-     files;
-     prods;
-     tool = Ocamlc {
-       a = "";
-     };
+     deps = file :: internal_deps;
+     prods = [cmi_file];
+     tool = Ocamlc spec;
+     file;
     }
+
+
+  (* let file file = *)
+  (*   let open File in *)
+  (*   match typ file with *)
+  (*   | Mli -> mli_file file *)
+  (*   | _ -> raise Not_found *)
+
+
+
+  let install_rules {deps; prods; tool; file} =
+    let deps = List.map ~f:File.path deps in
+    let prods = List.map ~f:File.path prods in
+    match tool with
+    | Ocamlc spec ->
+      Rule.rule ~deps ~prods (fun _ _ ->
+          BTools.ocamlc spec [File.path file]
+        )
+
+
 
 
   (* Compile.mli_files ~deps:(files Mli) *)
@@ -110,12 +142,10 @@ module Compile = struct
   (*   List.iter mli_files ~f:(fun mli -> *)
   (*     let base = chop_suffix mli ".mli" in *)
   (*     let cmi = sprintf "%s.cmi" base in *)
-  (*     let internal_deps = internal_deps_files `Byte (Lib x) in *)
   (*     Rule.rule ~deps:(mli::internal_deps) ~prods:[cmi] *)
   (*       (fun _ build -> *)
   (*          build_deps_cmi_files build ~pathI ~package file_base_of_module mli; *)
   (*          ocaml `Byte ~c:() ~pathI ~package ~o:cmi [mli] *)
   (*       ) *)
   (*   ); *)
-
 end
