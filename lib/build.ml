@@ -3,6 +3,7 @@ open Printf
 open Util
 open Util.Filename
 
+(*
 module File : sig
   type t
 
@@ -77,8 +78,12 @@ end = struct
     (typ, replace_suffix_exn ~old:(typ_to_extension old) ~new_:(typ_to_extension new_) path)
 end
 
+module type Btools = sig
+  type t
+  val ocamlc : spec option list list -> string list -> Command.t
+end
 
-module BTools = struct
+module Tools : Btools = struct
   type t = spec option list list
 
   let ocamlc spec files =
@@ -87,43 +92,6 @@ module BTools = struct
     @spec
     @[List.map files ~f:(fun file -> Some (A file))]
     |> specs_to_command
-end
-
-
-module Compile = struct
-  type tool =
-    | Ocamlc of BTools.t
-
-  type t = {
-    deps : File.t list;
-    file : File.t;
-    prods : File.t list;
-    tool : tool;
-  }
-
-  (* TODO: Validate file type. *)
-  let mli_file
-      ?pathI
-      ?package
-      ?internal_deps:(internal_deps=[])
-      ?thread
-      file
-    =
-    let open File in
-    let cmi_file = replace_extension_exn ~old:Mli ~new_:Cmi file in
-    let spec = Util.Spec.([
-        string_list ~delim:`Space "-package" package;
-        string ~delim:`Space "-o" (Some (path cmi_file));
-        unit "-thread" thread;
-        string_list ~delim:`Space "-I" pathI;
-      ])
-    in
-    {
-     deps = file :: internal_deps;
-     prods = [cmi_file];
-     tool = Ocamlc spec;
-     file;
-    }
 
 
   let install_rules {deps; prods; tool; file} =
@@ -135,7 +103,108 @@ module Compile = struct
           BTools.ocamlc spec [File.path file]
         )
 
+end
 
+(* (1* Sort files in dependency order before performing any actions. *)
+(*  * Including prioritorizing mli files over ml, etc.*)
+(* let sort_files () = () *)
+
+(* Compile module takes prods to deps.
+ * Thats a generalization on the entire Build process... *)
+(* Thats what ocamlbuild does itself
+ *
+ * So....
+ *
+ * Add ability to specify extra constraints on top of ocamlbuild commands.
+ *  - What dependencies are required. -> ocamlbuild does this with ~deps
+ *  - What combination of flags is required
+ *  - What kind of dependency to product mapping is possible in the first place,
+ *    ie. what are the toolchain capabilities. This is effectively limiting what
+ *    combination of deps and prods you can have. Is this useful?
+ *  - Perhaps more useful: I want -this type of output-
+ *                         From -these files-
+ *                         What are the steps and opts required to the toolchain.
+ *  - This is effectively what you are describing with Ocaml build, hence the tags thing probably.
+ *
+ *
+ * *)
+module Ocamlc = struct
+  type t = {
+    deps : File.t list;
+    prods : File.t list;
+    files : File.t list;
+    spec : spec option list list;
+  }
+
+  exception Unsupported_file_type of File.t
+
+
+  let package t package =
+    let spec = Util.Spec.(
+        (string_list ~delim:`Space "-package" package) :: t.spec
+      ) in
+    {t with spec}
+
+
+  let pathI t pathI =
+    let spec = Util.Spec.(
+        (string_list ~delim:`Space "-I" pathI) :: t.spec
+      ) in
+    {t with spec}
+
+
+  let thread t =
+    let spec = Util.Spec.(
+        (unit "-thread" (Some ())) :: t.spec
+      ) in
+    {t with spec}
+
+
+  let compile_mli_file ~opts file =
+    let open File in
+    let cmi_file = replace_extension_exn ~old:Mli ~new_:Cmi file in
+    let spec = Util.Spec.(opts @ [
+        string ~delim:`Space "-o" (Some (path cmi_file));
+      ])
+    in
+    {
+      deps = [file];
+      prods = [cmi_file];
+      spec;
+      files = [file];
+    }
+
+
+  let to_command t =
+    let open Util.Spec in
+    [[Some (A "ocamlfind"); Some (A "ocamlc")]]
+    @t.spec
+    @[List.map t.files ~f:(fun file -> Some (A (File.path file)))]
+    |> specs_to_command
+
+
+  (* let ml_file *)
+  (*     ?internal_deps:(internal_deps=[]) *)
+  (*     files *)
+  (*     kind *)
+  (*   = *)
+  (*   let open File in *)
+  (*     let cmo_file = replace_extension_exn ~old:Ml ~new_:Cmo in *)
+
+
+  (* Take common opts for tools. Internal deps, pathI, etc. *)
+  let create ~file =
+    match File.typ file with
+    | Mli -> mli_file file
+    | _ -> raise Unsupported_file_type file
+
+
+  let install_rules {deps; prods; tool; file} =
+    let deps = List.map ~f:File.path deps in
+    let prods = List.map ~f:File.path prods in
+    Rule.rule ~deps ~prods (fun _ _ ->
+        BTools.ocamlc spec [File.path file]
+      )
 
 
   (* Compile.mli_files ~deps:(files Mli) *)
@@ -151,3 +220,91 @@ module Compile = struct
   (*       ) *)
   (*   ); *)
 end
+
+   *)
+
+
+(* Can use one or a combination of tools *)
+(* Pass file to Tool for command generation. *)
+(* Customize args at each step, by using opts with the same file glob as ocamlbuild tags? *)
+(* Install rules. *)
+module Build = struct
+  type t = {
+    deps : File.t list;
+    prods : File.t list;
+    (* tool : T.t *)
+  }
+
+  (* Fold over dependency sorted files? *)
+  let rec fold ?customizer files =
+    List.fold ~f:(fun prods file ->
+
+        (* match File.name file with *)
+        (* | "mylib.a" -> ... *)
+
+        (* | A and (File.name file) -> -custom *)
+
+
+        (* This dispatch table is the plugin... *)
+        (* You start here, and start adding support for more file types,
+         * as the compiler reports... *)
+          (* Tools should return prods in order that they should be build
+           * that the consumer MUST handle or incomplete match. *)
+        match File.typ_and_name file with
+        | `Mli path -> fold (Ocamlc.compile_mli_file file) (* <- list of prods *)
+        | (Cmi, _) -> file
+        | (Ml, name) -> fold (Ocamlc.compile_ml_file)
+        | `Cmo_for_pack cmo_files ->
+          (* expanding variant as you add more capability *)
+
+        (* customizer prods *)
+
+      ) ~init:[] |>
+
+
+
+  (* Can you infer which tool to execute?
+   * No, there are multiple ways to build a cmo. *)
+  let lib
+    ~dir
+    ~name
+    =
+    File.ls_dir ~dir |>
+    ocamldep_sort |> (* Can be file sort *)
+    fold files |>
+    Build.install_rules
+
+
+    let compile = List.map mli_files ~f:(fun file -> Compile.mli_file
+                             ?thread
+                             ~package
+                             ~pathI
+                             ~internal_deps:cmi_internal_deps
+                             (File.create File.Mli file)
+                          ) in
+
+    List.iter ~f:Compile.install_rules built_cmi;
+
+
+
+
+
+    (* For each input file execute some command. *)
+    (* Or, for a list of input files, execute commands. *)
+
+    (* Work backwards through unit deps *)
+    (* Lib < cma *)
+    (*     < [name].a/.so *)
+    (*     < cmo list *)
+    (*     < ml *)
+    (*     < mli *)
+
+
+    (* build mli files *)
+    (* build ml files *)
+end
+
+
+(* Ocamlc.with_new_opt : experimental_opts -> M : Ocamlc *)
+
+(* module CompileBytecode = BuildWith(Ocamlc) *)
