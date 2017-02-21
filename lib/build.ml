@@ -3,7 +3,6 @@ open Printf
 open Util
 open Util.Filename
 
-(*
 module File : sig
   type t
 
@@ -76,38 +75,11 @@ end = struct
 
   let replace_extension_exn ((typ, path) : t) ~old ~new_ =
     (typ, replace_suffix_exn ~old:(typ_to_extension old) ~new_:(typ_to_extension new_) path)
-end
-
-module type Btools = sig
-  type t
-  val ocamlc : spec option list list -> string list -> Command.t
-end
-
-module Tools : Btools = struct
-  type t = spec option list list
-
-  let ocamlc spec files =
-    let open Util.Spec in
-    [[Some (A "ocamlfind"); Some (A "ocamlc")]]
-    @spec
-    @[List.map files ~f:(fun file -> Some (A file))]
-    |> specs_to_command
-
-
-  let install_rules {deps; prods; tool; file} =
-    let deps = List.map ~f:File.path deps in
-    let prods = List.map ~f:File.path prods in
-    match tool with
-    | Ocamlc spec ->
-      Rule.rule ~deps ~prods (fun _ _ ->
-          BTools.ocamlc spec [File.path file]
-        )
-
-end
 
 (* (1* Sort files in dependency order before performing any actions. *)
 (*  * Including prioritorizing mli files over ml, etc.*)
 (* let sort_files () = () *)
+end
 
 (* Compile module takes prods to deps.
  * Thats a generalization on the entire Build process... *)
@@ -136,9 +108,6 @@ module Ocamlc = struct
     spec : spec option list list;
   }
 
-  exception Unsupported_file_type of File.t
-
-
   let package t package =
     let spec = Util.Spec.(
         (string_list ~delim:`Space "-package" package) :: t.spec
@@ -160,7 +129,7 @@ module Ocamlc = struct
     {t with spec}
 
 
-  let compile_mli_file ~opts file =
+  let compile_mli ~opts file =
     let open File in
     let cmi_file = replace_extension_exn ~old:Mli ~new_:Cmi file in
     let spec = Util.Spec.(opts @ [
@@ -193,17 +162,18 @@ module Ocamlc = struct
 
 
   (* Take common opts for tools. Internal deps, pathI, etc. *)
-  let create ~file =
-    match File.typ file with
-    | Mli -> mli_file file
-    | _ -> raise Unsupported_file_type file
+  (* let create ~file = *)
+  (*   match File.typ file with *)
+  (*   | Mli -> mli_file file *)
+  (*   | _ -> raise Unsupported_file_type file *)
 
 
-  let install_rules {deps; prods; tool; file} =
-    let deps = List.map ~f:File.path deps in
-    let prods = List.map ~f:File.path prods in
+  let install_rules ({deps; prods;_} as t) =
+    let paths = List.map ~f:File.path in
+    let deps = paths deps in
+    let prods = paths prods in
     Rule.rule ~deps ~prods (fun _ _ ->
-        BTools.ocamlc spec [File.path file]
+        to_command t
       )
 
 
@@ -221,8 +191,8 @@ module Ocamlc = struct
   (*   ); *)
 end
 
-   *)
 
+(* Mint new type for each file type to prevent problems *)
 
 (* Can use one or a combination of tools *)
 (* Pass file to Tool for command generation. *)
@@ -232,58 +202,54 @@ module Build = struct
   type t = {
     deps : File.t list;
     prods : File.t list;
-    (* tool : T.t *)
   }
 
+  (* Make it impossible to call functions with wrong input file type, or wrong dependency *)
+  type 'a file = 'a * string
+
+  let compile_mli mli_file = `Compiled_intf (
+      Ocamlc.compile_mli ~opts:[] mli_file
+    )
+
+
+  (* This dispatch table is the plugin... *)
+  (* You start here, and start adding support for more file types,
+   * as the compiler reports errors... *)
+  (* Tools should return prods in order that they should be build
+   * that the consumer MUST handle or incomplete match. *)
+  (* Calling step recurses into the prods right now,
+   * not calling it finishes processing the current list of files first. *)
   (* Fold over dependency sorted files? *)
-  let rec fold ?customizer files =
-    List.fold ~f:(fun prods file ->
 
-        (* match File.name file with *)
-        (* | "mylib.a" -> ... *)
+  let rec build (*?customizer*) deps =
+    build (
+      List.fold_left ~f:(
+        fun prods -> function
+          | `Intf mli_file -> (compile_mli mli_file) :: prods (* <- list of prods *)
+          | `Compiled_intf mlc -> Ocamlc.install_rules mlc; prods
 
-        (* | A and (File.name file) -> -custom *)
-
-
-        (* This dispatch table is the plugin... *)
-        (* You start here, and start adding support for more file types,
-         * as the compiler reports... *)
-          (* Tools should return prods in order that they should be build
-           * that the consumer MUST handle or incomplete match. *)
-        match File.typ_and_name file with
-        | `Mli path -> fold (Ocamlc.compile_mli_file file) (* <- list of prods *)
-        | (Cmi, _) -> file
-        | (Ml, name) -> fold (Ocamlc.compile_ml_file)
-        | `Cmo_for_pack cmo_files ->
-          (* expanding variant as you add more capability *)
-
-        (* customizer prods *)
-
-      ) ~init:[] |>
-
+      ) ~init:[] deps
+    )
 
 
   (* Can you infer which tool to execute?
    * No, there are multiple ways to build a cmo. *)
-  let lib
-    ~dir
-    ~name
-    =
-    File.ls_dir ~dir |>
-    ocamldep_sort |> (* Can be file sort *)
-    fold files |>
-    Build.install_rules
+  let lib ~files (*~dir ~name*) =
+    (* File.ls_dir ~dir |> *)
+    (* ocamldep_sort |> (1* Can be file sort *1) *)
+    build files
 
 
-    let compile = List.map mli_files ~f:(fun file -> Compile.mli_file
-                             ?thread
-                             ~package
-                             ~pathI
-                             ~internal_deps:cmi_internal_deps
-                             (File.create File.Mli file)
-                          ) in
 
-    List.iter ~f:Compile.install_rules built_cmi;
+    (* let compile = List.map mli_files ~f:(fun file -> Compile.mli_file *)
+    (*                          ?thread *)
+    (*                          ~package *)
+    (*                          ~pathI *)
+    (*                          ~internal_deps:cmi_internal_deps *)
+    (*                          (File.create File.Mli file) *)
+    (*                       ) in *)
+
+    (* List.iter ~f:Compile.install_rules built_cmi; *)
 
 
 
