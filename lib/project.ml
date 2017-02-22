@@ -153,6 +153,7 @@ let lib
     ?ml_files ?mli_files ?c_files ?h_files
     ?(build_plugin=true) ~pkg ~style ~dir name
   =
+  Build.BuildLib.hello ();
   let all_files =
     try Sys.readdir dir |> Array.to_list
     with _ -> []
@@ -948,11 +949,11 @@ let build_lib (x:lib) =
   let c_files = List.map x.c_files ~f:(fun y -> x.dir/y) in
   let h_files = List.map x.h_files ~f:(fun y -> x.dir/y) in
 
-  let inf = Link.Lib.Info.create
-      ~dir:x.dir
-      ~name:x.name
-      ~ml_files
-      ~c_files in
+  (* let inf = Link.Lib.Info.create *)
+  (*     ~dir:x.dir *)
+  (*     ~name:x.name *)
+  (*     ~ml_files *)
+  (*     ~c_files in *)
 
   let pathI = List.sort_uniq ~cmp:String.compare @@
     (module_dir ~style_matters:false x)
@@ -968,33 +969,16 @@ let build_lib (x:lib) =
   (* Register rules *)
   (****************************************************************************)
   (* .mli -> .cmi *)
-  (* List.iter mli_files ~f:(fun mli -> *)
-  (*   let base = chop_suffix mli ".mli" in *)
-  (*   let cmi = sprintf "%s.cmi" base in *)
-  (*   let internal_deps = internal_deps_files `Byte (Lib x) in *)
-  (*   Rule.rule ~deps:(mli::internal_deps) ~prods:[cmi] *)
-  (*     (fun _ build -> *)
-  (*        build_deps_cmi_files build ~pathI ~package file_base_of_module mli; *)
-  (*        ocaml `Byte ~c:() ~pathI ~package ~o:cmi [mli] *)
-  (*     ) *)
-
-  (* ); *)
-
-  let open Build in
-
-  let cmi_internal_deps = List.map
-      ~f:(File.create File.Cma)
-      (internal_deps_files `Byte (Lib x))
-  in
-
-  let built_cmi = List.map mli_files ~f:(fun file -> Compile.mli_file
-                           ?thread
-                           ~package
-                           ~pathI
-                           ~internal_deps:cmi_internal_deps
-                           (File.create File.Mli file)
-                        ) in
-  List.iter ~f:Compile.install_rules built_cmi;
+  List.iter mli_files ~f:(fun mli ->
+    let base = chop_suffix mli ".mli" in
+    let cmi = sprintf "%s.cmi" base in
+    let internal_deps = internal_deps_files `Byte (Lib x) in
+    Rule.rule ~deps:(mli::internal_deps) ~prods:[cmi]
+      (fun _ build ->
+         build_deps_cmi_files build ~pathI ~package file_base_of_module mli;
+         ocaml `Byte ~c:() ~pathI ~package ~o:cmi [mli]
+      )
+  );
 
   (* .ml -> ... *)
   List.iter ml_files ~f:(fun ml ->
@@ -1105,7 +1089,7 @@ let build_lib (x:lib) =
             )
         )
       )
-    | _ -> Link.Lib.(
+    | _ -> () (*Link.Lib.(
         let lnk =
           create inf
           |> link_packages ~packages:package
@@ -1114,7 +1098,7 @@ let build_lib (x:lib) =
         install_stub_lib_rules lnk;
         install_bytecode_lib_rules lnk;
         install_native_lib_rules lnk;
-      )
+      )*)
   )
 ;;
 

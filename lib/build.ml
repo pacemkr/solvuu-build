@@ -27,6 +27,7 @@ module File : sig
   val filter_by : typ:typ -> t list -> t list
   val typ : t -> typ
   val path : t -> string
+  val ls_dir : dir:string -> t list
 
 end = struct
 
@@ -60,9 +61,29 @@ end = struct
     | C_a -> ".a"
     | C_dll -> ".so"
 
-
   let create typ path =
     (typ, path)
+
+  let ls_dir ~dir =
+    let all_files =
+      try Sys.readdir dir |> Array.to_list
+      with _ -> []
+    in
+    let select_files ?add_replace suffix =
+      List.filter all_files ~f:(fun x -> check_suffix x suffix) |> fun l ->
+      (match add_replace with
+       | None -> l
+       | Some (`Add x) -> x@l
+       | Some (`Replace x) -> x
+      ) |>
+      List.sort_uniq ~cmp:String.compare
+    in
+    let ml_files = select_files ".ml" in
+    let mli_files = select_files ".mli" in
+    let c_files = select_files ".c" in
+    List.map ~f:(create Mli) mli_files
+    (* List.map ~f:(create Ml) ml_files @ *)
+    (* List.map ~f:(create C) c_files *)
 
   let is_of_typ (typ2,_) ~typ = typ = typ2
 
@@ -198,19 +219,46 @@ end
 (* Pass file to Tool for command generation. *)
 (* Customize args at each step, by using opts with the same file glob as ocamlbuild tags? *)
 (* Install rules. *)
-module Build = struct
+module BuildLib = struct
   type t = {
-    deps : File.t list;
-    prods : File.t list;
+    name : string;
+    dir : string;
+    packages : string list option;
   }
 
   (* Make it impossible to call functions with wrong input file type, or wrong dependency *)
   type 'a file = 'a * string
 
-  let compile_mli mli_file = `Compiled_intf (
-      Ocamlc.compile_mli ~opts:[] mli_file
+
+  let pathI t =
+    Util.Spec.string_list ~delim:`Space "-I" (Some [
+        t.dir;
+        (* internal deps paths *)
+      ])
+
+
+  let package t =
+    Util.Spec.string_list ~delim:`Space "-package" t.packages
+
+
+  let compile_mli t mli_file = `Compiled_intf (
+      Ocamlc.compile_mli ~opts:[
+        (package t);
+        (pathI t);
+      ] mli_file
     )
 
+
+  let deps_of_files =
+    List.map ~f:(fun file ->
+        match File.typ file with
+        | File.Mli -> `Intf file
+        (* | File.C -> `C file *)
+        | _ -> raise Not_found
+      )
+
+  let hello () =
+    print_endline "hellow cmo"
 
   (* This dispatch table is the plugin... *)
   (* You start here, and start adding support for more file types,
@@ -221,23 +269,93 @@ module Build = struct
    * not calling it finishes processing the current list of files first. *)
   (* Fold over dependency sorted files? *)
 
-  let rec build (*?customizer*) deps =
-    build (
-      List.fold_left ~f:(
-        fun prods -> function
-          | `Intf mli_file -> (compile_mli mli_file) :: prods (* <- list of prods *)
-          | `Compiled_intf mlc -> Ocamlc.install_rules mlc; prods
+  let build_static_file path content =
+    let open Ocamlbuild_plugin in
+    let open Util in
+    let path = Filename.normalize path in
+    let content = List.map content ~f:(sprintf "%s\n") in
+    rule path ~prod:path (fun _ _ ->
+        Seq [
+          Cmd (Sh (sprintf "mkdir -p %s" (dirname path)));
+          Echo (content,path);
+        ]
+      )
 
+  let makefile t =
+    let default = ["default: byte"] in
+    let ln file = [
+      sprintf "%s: _build/%s" file file;
+      "\tln -fs $< $@";
+    ]
+    in
+    let libs = ["_build"/t.dir/t.name ^ ".cma"] in
+    let byte =
+      libs |>
+      String.concat ~sep:" " |>
+      sprintf "byte: %s"
+    in
+    (* let native = *)
+    (*   [libs `Native;] |> *)
+    (*   List.concat |> *)
+    (*   String.concat ~sep:" " |> *)
+    (*   sprintf "native: %s" *)
+    (* in *)
+    let outsource_to_ocamlbuild = [
+      "_build/%: FORCE";
+      "\t$(OCAMLBUILD) $(patsubst _build/%,%,$@)";
+      "\trm -f $(notdir $@)";
+    ]
+    in
+    let clean = [
+      "clean:";
+      "\trm -rf _build";
+      sprintf "\trm -f .merlin .ocamlinit %s.install" t.name;
+    ]
+    in
+    let phony = [".PHONY: default byte native clean"] in
+    [
+      default;
+      outsource_to_ocamlbuild;
+      ln @@ sprintf "%s.install" t.name;
+      [byte];
+      clean;
+      phony;
+      ["FORCE:"];
+    ] |>
+    List.intersperse ~sep:[""] |>
+    List.flatten
+
+
+  let rec build t (*?customizer*) deps =
+    let prods = List.fold_left ~f:(
+        fun prods -> function
+          | `Intf mli_file -> (compile_mli t mli_file) :: prods (* <- list of prods *)
+          | `Compiled_intf mlc -> Ocamlc.install_rules mlc; prods
       ) ~init:[] deps
-    )
+    in
+    match prods with
+    | [] -> ()
+    | prods -> build t prods
 
 
   (* Can you infer which tool to execute?
    * No, there are multiple ways to build a cmo. *)
-  let lib ~files (*~dir ~name*) =
-    (* File.ls_dir ~dir |> *)
-    (* ocamldep_sort |> (1* Can be file sort *1) *)
-    build files
+  let lib ?findlib_deps ~dir ~name =
+    Ocamlbuild_plugin.dispatch @@ function
+    | Ocamlbuild_plugin.After_rules -> (
+        Ocamlbuild_plugin.clear_rules();
+
+
+        let t = {dir; name; packages = findlib_deps} in
+
+        build_static_file "project.mk" (makefile t);
+
+        File.ls_dir ~dir |>
+        deps_of_files |>
+        (* ocamldep_sort |> (1* Can be file sort *1) *)
+        build t
+      )
+    | _ -> ()
 
 
 
@@ -250,8 +368,6 @@ module Build = struct
     (*                       ) in *)
 
     (* List.iter ~f:Compile.install_rules built_cmi; *)
-
-
 
 
 
