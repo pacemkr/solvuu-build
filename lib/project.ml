@@ -153,7 +153,6 @@ let lib
     ?ml_files ?mli_files ?c_files ?h_files
     ?(build_plugin=true) ~pkg ~style ~dir name
   =
-  Build.BuildLib.hello ();
   let all_files =
     try Sys.readdir dir |> Array.to_list
     with _ -> []

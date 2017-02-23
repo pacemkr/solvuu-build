@@ -3,6 +3,112 @@ open Printf
 open Util
 open Util.Filename
 
+
+module File = struct
+  module type Typ = sig
+    type t
+    val of_path : string -> t
+    val path : t -> string
+  end
+
+  module Simple_file = struct
+    type t = string
+    let of_path path = path
+    let path t = t
+  end
+    (* let of_path path = *)
+    (*   match extension path with *)
+    (*   | ".mli" -> Some (`Mli path) *)
+    (*   | _ -> None *)
+
+  let path
+    (type a)
+    (module F : Typ with type t = a)
+    (t : a)
+    =
+    F.path t
+
+  module Mli : Typ = Simple_file
+  module Ml : Typ = Simple_file
+  (* let path t : Typ = *)
+  (*   let module M = (val m : Typ with type t = string) in *)
+  (*   M.path t *)
+end
+
+
+
+(* let () = *)
+(*   let open File in *)
+(*   let testf = Mli.of_path "asd" in *)
+(*   let mli_typ = (module Mli : Typ with type t = Mli.t) in *)
+(*   let ml_typ = (module Ml : Typ with type t = Ml.t) in *)
+(*   let (module M) = mli_typ in *)
+(*   let (module M) = ml_typ in *)
+(*   let path = M.path testf in *)
+(*   () *)
+
+  (* module Make(Typ : sig val ext : string end) : sig *)
+  (*   type t *)
+  (*   val of_path : string -> t *)
+  (*   val path : t -> string *)
+  (* end = struct *)
+  (*   type t = string *)
+  (*   (1* TODO: validate extension *1) *)
+  (*   let of_path path = path *)
+  (*   let path t = t *)
+  (* end *)
+
+  (* type ml = string *)
+  (* type mli *)
+
+  (* type 'a file = 'a * string *)
+
+  (* let create typ path = (typ, path) *)
+  (* module Ml = Make(struct let ext = ".ml" end) *)
+  (* module Mli = Make(struct let ext = ".mli" end) *)
+
+  (* let path (_, path) = path *)
+
+
+let ls_dir dir =
+  let open File in
+  let all_files =
+    try Sys.readdir dir |> Array.to_list
+    with _ -> []
+  in
+  List.filter_map all_files ~f:(fun path ->
+      match extension path with
+      | ".mli" -> Some (`Mli (Mli.of_path path))
+      | ".ml" -> Some (`Ml (Ml.of_path path))
+      | _ -> None
+    )
+
+
+
+  (* let ml_files = select_files ".ml" in *)
+  (* let mli_files = select_files ".mli" in *)
+  (* let c_files = select_files ".c" in *)
+  (* List.map ~f:(fun f -> `Mli (Mli.of_path f)) mli_files *)
+(* List.map ~f:(create Ml) ml_files @ *)
+(* List.map ~f:(create C) c_files *)
+
+
+let () =
+  let open File in
+  ls_dir "." |>
+  List.iter ~f:(function
+      | `Mli file -> print_endline (File.path (module Mli) file);
+      | `Ml file -> print_endline (File.path (module Ml) file);
+    )
+
+
+
+
+
+
+
+
+(*
 module File : sig
   type t
 
@@ -257,8 +363,6 @@ module BuildLib = struct
         | _ -> raise Not_found
       )
 
-  let hello () =
-    print_endline "hellow cmo"
 
   (* This dispatch table is the plugin... *)
   (* You start here, and start adding support for more file types,
@@ -326,16 +430,24 @@ module BuildLib = struct
     List.flatten
 
 
+  (* build is a list of customizers *)
   let rec build t (*?customizer*) deps =
     let prods = List.fold_left ~f:(
         fun prods -> function
           | `Intf mli_file -> (compile_mli t mli_file) :: prods (* <- list of prods *)
-          | `Compiled_intf mlc -> Ocamlc.install_rules mlc; prods
+          | `Compiled_intf rules -> `Prod (dep, rules)
       ) ~init:[] deps
     in
-    match prods with
-    | [] -> ()
-    | prods -> build t prods
+    customizer prods
+    if all `Prods then prods
+    else build prods
+
+      Build.ls_dir |>>
+      Build.lib |>>
+      Build.install_rules
+
+  let rec chain build_step deps =
+    let prods = List.fold_left ~f:build_step deps in
 
 
   (* Can you infer which tool to execute?
@@ -344,7 +456,6 @@ module BuildLib = struct
     Ocamlbuild_plugin.dispatch @@ function
     | Ocamlbuild_plugin.After_rules -> (
         Ocamlbuild_plugin.clear_rules();
-
 
         let t = {dir; name; packages = findlib_deps} in
 
@@ -385,6 +496,7 @@ module BuildLib = struct
     (* build mli files *)
     (* build ml files *)
 end
+   *)
 
 
 (* Ocamlc.with_new_opt : experimental_opts -> M : Ocamlc *)
