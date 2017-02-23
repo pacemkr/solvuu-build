@@ -7,67 +7,65 @@ open Util.Filename
 module File = struct
   module type Typ = sig
     type t
+    val ext : string
     val of_path : string -> t
     val path : t -> string
+    val replace_ext : ext:string -> t -> string
   end
 
-  module Simple_file = struct
+  module Make(Ft : sig val ext : string end) : Typ = struct
+    include Ft
+
     type t = string
     let of_path path = path
     let path t = t
+    let replace_ext ~ext = replace_suffix_exn ~old:Ft.ext ~new_:ext
   end
-    (* let of_path path = *)
-    (*   match extension path with *)
-    (*   | ".mli" -> Some (`Mli path) *)
-    (*   | _ -> None *)
 
-  let path
+  let typ_conv
     (type a)
-    (module F : Typ with type t = a)
-    (t : a)
+    (type b)
+    (module From : Typ with type t = a)
+    (module To : Typ with type t = b)
+    (file : a) : b
     =
-    F.path t
+    To.of_path (replace_suffix_exn ~old:From.ext ~new_:To.ext (From.path file))
 
-  module Mli : Typ = Simple_file
-  module Ml : Typ = Simple_file
-  (* let path t : Typ = *)
-  (*   let module M = (val m : Typ with type t = string) in *)
-  (*   M.path t *)
+  module Ml : Typ = Make(struct let ext = ".ml" end)
+  module Mli : Typ = Make(struct let ext = ".mli" end)
+  module Cmo : Typ = Make(struct let ext = ".cmo" end)
+  module Cmi : Typ = Make(struct let ext = ".cmi" end)
+  module Cmx : Typ = Make(struct let ext = ".cmx" end)
+  module Cma : Typ = Make(struct let ext = ".cma" end)
+  module Cmxa : Typ = Make(struct let ext = ".cmxa" end)
+  module Cmxs : Typ = Make(struct let ext = ".cmxs" end)
+  module C : Typ = Make(struct let ext = ".c" end)
+  module O : Typ = Make(struct let ext = ".o" end)
+  module A : Typ = Make(struct let ext = ".a" end)
+  module Dll : Typ = Make(struct let ext = ".so" end)
 end
 
+type rule = {
+  deps : string list;
+  prods : string list;
+  files : string list;
+  spec : spec option list list;
+}
+
+let is_rule = function `Rule _ -> true | _ -> false
+
+(* type item = *)
+(*   | Intf of File.Mli.t *)
+(*   | Compiled_intf of File.Cmi.t * rule *)
+(*   | Rule of rule *)
 
 
-(* let () = *)
-(*   let open File in *)
-(*   let testf = Mli.of_path "asd" in *)
-(*   let mli_typ = (module Mli : Typ with type t = Mli.t) in *)
-(*   let ml_typ = (module Ml : Typ with type t = Ml.t) in *)
-(*   let (module M) = mli_typ in *)
-(*   let (module M) = ml_typ in *)
-(*   let path = M.path testf in *)
-(*   () *)
-
-  (* module Make(Typ : sig val ext : string end) : sig *)
-  (*   type t *)
-  (*   val of_path : string -> t *)
-  (*   val path : t -> string *)
-  (* end = struct *)
-  (*   type t = string *)
-  (*   (1* TODO: validate extension *1) *)
-  (*   let of_path path = path *)
-  (*   let path t = t *)
-  (* end *)
-
-  (* type ml = string *)
-  (* type mli *)
-
-  (* type 'a file = 'a * string *)
-
-  (* let create typ path = (typ, path) *)
-  (* module Ml = Make(struct let ext = ".ml" end) *)
-  (* module Mli = Make(struct let ext = ".mli" end) *)
-
-  (* let path (_, path) = path *)
+let to_command spec files =
+  let open Util.Spec in
+  [[Some (A "ocamlfind"); Some (A "ocamlc")]]
+  @spec
+  @[List.map files ~f:(fun file -> Some (A file))]
+  |> specs_to_command
 
 
 let ls_dir dir =
@@ -78,10 +76,71 @@ let ls_dir dir =
   in
   List.filter_map all_files ~f:(fun path ->
       match extension path with
-      | ".mli" -> Some (`Mli (Mli.of_path path))
-      | ".ml" -> Some (`Ml (Ml.of_path path))
+      | ".mli" -> Some (`Intf (Mli.of_path path))
+      | ".ml" -> Some (`Src (Ml.of_path path))
       | _ -> None
     )
+
+
+let compile_mli mli_file =
+  let open File in
+  let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
+  let cmi_path = Cmi.path cmi_file in
+  let mli_path = Mli.path mli_file in
+  let spec = Util.Spec.([
+      string ~delim:`Space "-o" (Some cmi_path);
+    ])
+  in
+  `Compiled_intf (cmi_file, {
+      deps = [mli_path];
+      prods = [cmi_path];
+      files = [mli_path];
+      spec;
+    })
+
+
+let build_lib acc dep =
+  match dep with
+  | `Src _ -> acc
+  | `Intf mli_file -> (compile_mli mli_file) :: acc (* <- list of prods *)
+  | `Compiled_intf (_, rule) -> (`Rule rule) :: acc
+  | `Rule _ -> dep :: acc
+
+
+let install_rules acc dep =
+  match dep with
+  | `Rule {deps; prods; files; spec} ->
+      Rule.rule ~deps ~prods (fun _ _ ->
+          to_command spec files
+      );
+      acc
+  | _ -> dep :: acc
+
+
+
+let rec build ?next ~step ~deps =
+  let prods = List.fold_left ~f:step ~init:[] deps in
+  let prods = match next with
+  | Some next -> (List.fold_left ~f:next ~init:[] prods) @ prods
+  | None -> prods
+  in
+  if List.for_all ~f:is_rule prods then prods
+  else build ?next ~step ~deps:prods
+
+(* let (|>>) deps next_build_step = *)
+
+
+let lib ~dir =
+  Ocamlbuild_plugin.dispatch @@ function
+  | Ocamlbuild_plugin.After_rules -> (
+      Ocamlbuild_plugin.clear_rules();
+
+      let files = ls_dir dir in
+      ignore (build ~step:(build_lib) ~deps:files ~next:install_rules)
+    )
+  | _ -> ()
+
+
 
 
 
@@ -93,13 +152,6 @@ let ls_dir dir =
 (* List.map ~f:(create C) c_files *)
 
 
-let () =
-  let open File in
-  ls_dir "." |>
-  List.iter ~f:(function
-      | `Mli file -> print_endline (File.path (module Mli) file);
-      | `Ml file -> print_endline (File.path (module Ml) file);
-    )
 
 
 
