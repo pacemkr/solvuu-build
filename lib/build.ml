@@ -99,33 +99,39 @@ let compile_mli mli_file =
     })
 
 
-let build_lib acc dep =
-  match dep with
-  | `Src _ -> acc
-  | `Intf mli_file -> (compile_mli mli_file) :: acc (* <- list of prods *)
-  | `Compiled_intf (_, rule) -> (`Rule rule) :: acc
-  | `Rule _ -> dep :: acc
-
-
-let install_rules acc dep =
-  match dep with
-  | `Rule {deps; prods; files; spec} ->
-      Rule.rule ~deps ~prods (fun _ _ ->
-          to_command spec files
-      );
-      acc
-  | _ -> dep :: acc
-
-
-
-let rec build ?next ~step ~deps =
-  let prods = List.fold_left ~f:step ~init:[] deps in
-  let prods = match next with
-  | Some next -> (List.fold_left ~f:next ~init:[] prods) @ prods
-  | None -> prods
+let rec build_lib deps =
+  let prods = List.fold_left deps ~init:[] ~f:(fun prods dep ->
+      match dep with
+      | `Src _ -> prods
+      | `Intf mli_file -> (compile_mli mli_file) :: prods (* <- list of prods *)
+      | `Compiled_intf (_, rule) -> (`Rule rule) :: prods
+      | `Rule _ -> prods
+    )
   in
   if List.for_all ~f:is_rule prods then prods
-  else build ?next ~step ~deps:prods
+  else build_lib prods
+
+
+
+
+let install_rules items =
+  List.filter_map ~f:(function `Rule r -> Some r | _ -> None) items |>
+  List.iter ~f:(fun {deps; prods; files; spec} ->
+      Rule.rule ~deps ~prods (fun _ _ ->
+          to_command spec files
+      )
+    )
+
+
+
+(* let re build ?next ~step ~deps = *)
+(*   let prods = List.fold_left ~f:step ~init:[] deps in *)
+(*   let prods = match next with *)
+(*   | Some next -> (List.fold_left ~f:next ~init:[] prods) @ prods *)
+(*   | None -> prods *)
+(*   in *)
+(*   if list.for_all ~f:is_rule prods then prods *)
+(*   else build ?next ~step ~deps:prods *)
 
 (* let (|>>) deps next_build_step = *)
 
@@ -135,8 +141,9 @@ let lib ~dir =
   | Ocamlbuild_plugin.After_rules -> (
       Ocamlbuild_plugin.clear_rules();
 
-      let files = ls_dir dir in
-      ignore (build ~step:(build_lib) ~deps:files ~next:install_rules)
+      ls_dir dir |>
+      build_lib |>
+      install_rules
     )
   | _ -> ()
 
