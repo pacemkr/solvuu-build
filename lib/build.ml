@@ -76,8 +76,8 @@ let ls_dir dir =
   in
   List.filter_map all_files ~f:(fun path ->
       match extension path with
-      | ".mli" -> Some (`Intf (Mli.of_path path))
-      | ".ml" -> Some (`Src (Ml.of_path path))
+      | ".mli" -> Some (`Intf (Mli.of_path (dir ^ "/" ^ path)))
+      | ".ml" -> Some (`Src (Ml.of_path (dir ^ "/" ^ path)))
       | _ -> None
     )
 
@@ -117,6 +117,8 @@ let rec build_lib deps =
 let install_rules items =
   List.filter_map ~f:(function `Rule r -> Some r | _ -> None) items |>
   List.iter ~f:(fun {deps; prods; files; spec} ->
+      print_endline "INSTALL RULE";
+      List.iter ~f:print_endline prods;
       Rule.rule ~deps ~prods (fun _ _ ->
           to_command spec files
       )
@@ -140,6 +142,8 @@ let lib ~dir =
   Ocamlbuild_plugin.dispatch @@ function
   | Ocamlbuild_plugin.After_rules -> (
       Ocamlbuild_plugin.clear_rules();
+
+      print_endline "CLEAR RULES AND BUILD";
 
       ls_dir dir |>
       build_lib |>
