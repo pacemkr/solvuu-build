@@ -105,24 +105,30 @@ let compile_mli mli_file =
 let build_lib dep =
   match dep with
   (* | `Src _ -> dep *)
-  | Intf mli_file -> compile_mli mli_file (* <- list of prods *)
-  | Compiled_intf (_, rule) -> Rule rule
+  | Intf mli_file -> (compile_mli mli_file) (* <- list of prods *)
+  | Compiled_intf (_, rule) -> (Rule rule)
   | Rule _ -> dep
 
 
-(* let apply_pathI_opt = function *)
-(*   | `Compiled_intf (_, rule) -> *)
+let pathI_for_cmi dep =
+  match dep with
+  | Compiled_intf (file, rule) ->
+    Compiled_intf (file, {rule with spec = Util.Spec.([
+        string_list ~delim:`Space "-I" (Some ["lib"])
+      ]) @ rule.spec})
+  | _ -> dep
 
 
-let rec build ~chain ~deps =
-  let prods = List.fold_left deps ~init:[] ~f:(fun prods dep ->
-
-      (List.fold_left chain ~f:(fun dep fn -> fn dep) ~init:dep) :: prods
-
-    ) in
-  if List.for_all ~f:is_rule prods then prods
-  else build ~chain ~deps:prods
-
+(* Check for infinite recursion. *)
+let rec build
+    ?(target=(List.for_all ~f:is_rule))
+    ?(init=[])
+    ~f
+    deps
+  =
+  let prods = List.fold_left deps ~init ~f in
+  if (target prods) then prods
+  else build  ~target ~f prods
 
 
 
@@ -157,8 +163,16 @@ let lib ~dir =
 
       print_endline "CLEAR RULES AND BUILD";
 
-      build ~chain:[build_lib] ~deps:(ls_dir dir) |>
-      install_rules
+      ls_dir dir |>
+      build
+        ~f:(fun prods dep ->
+            (
+              build_lib dep |>
+              pathI_for_cmi
+            )
+            :: prods
+          )
+      |> install_rules
 
     )
   | _ -> ()
