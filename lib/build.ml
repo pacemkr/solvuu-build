@@ -130,14 +130,30 @@ let rec build
   else build ~target ~f (List.fold_left ~init ~f deps)
 
 
+let lib prods dep =
+  (
+    build_lib dep |>
+    pathI_for_cmi
+  )
+  :: prods
 
-let install_rules items =
-  List.filter_map ~f:(function Rule r -> Some r | _ -> None) items |>
-  List.iter ~f:(fun {deps; prods; files; spec} ->
-      Rule.rule ~deps ~prods (fun _ _ ->
-          to_command spec files
-      )
+
+let install_rules rules =
+  Ocamlbuild_plugin.dispatch @@ function
+  | Ocamlbuild_plugin.After_rules -> (
+
+      Ocamlbuild_plugin.clear_rules();
+
+      List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |>
+      List.iter ~f:(fun {deps; prods; files; spec} ->
+          Rule.rule ~deps ~prods (fun _ _ ->
+              to_command spec files
+          )
+        )
     )
+  | _ -> ()
+
+
 
 
 
@@ -153,24 +169,25 @@ let install_rules items =
 (* let (|>>) deps next_build_step = *)
 
 
-let lib ~dir =
-  Ocamlbuild_plugin.dispatch @@ function
-  | Ocamlbuild_plugin.After_rules -> (
-      Ocamlbuild_plugin.clear_rules();
 
-      ls_dir dir |>
+(* let lib ~dir = *)
+(*   Ocamlbuild_plugin.dispatch @@ function *)
+(*   | Ocamlbuild_plugin.After_rules -> ( *)
+(*       Ocamlbuild_plugin.clear_rules(); *)
 
-      build ~f:(fun prods dep ->
-          (
-            build_lib dep |>
-            pathI_for_cmi
-          )
-          :: prods
-        )
-      |> install_rules
+(*       ls_dir dir |> *)
 
-    )
-  | _ -> ()
+(*       build ~f:(fun prods dep -> *)
+(*           ( *)
+(*             build_lib dep |> *)
+(*             pathI_for_cmi *)
+(*           ) *)
+(*           :: prods *)
+(*         ) *)
+(*       |> install_rules *)
+
+(*     ) *)
+(*   | _ -> () *)
 
 
 
