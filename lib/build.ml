@@ -119,24 +119,21 @@ let pathI_for_cmi dep =
   | _ -> dep
 
 
-(* Check for infinite recursion. *)
+(* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
 let rec build
     ?(target=(List.for_all ~f:is_rule))
     ?(init=[])
     ~f
     deps
   =
-  let prods = List.fold_left deps ~init ~f in
-  if (target prods) then prods
-  else build  ~target ~f prods
+  if (target deps) then deps
+  else build ~target ~f (List.fold_left ~init ~f deps)
 
 
 
 let install_rules items =
   List.filter_map ~f:(function Rule r -> Some r | _ -> None) items |>
   List.iter ~f:(fun {deps; prods; files; spec} ->
-      print_endline "INSTALL RULE";
-      List.iter ~f:print_endline prods;
       Rule.rule ~deps ~prods (fun _ _ ->
           to_command spec files
       )
@@ -161,17 +158,15 @@ let lib ~dir =
   | Ocamlbuild_plugin.After_rules -> (
       Ocamlbuild_plugin.clear_rules();
 
-      print_endline "CLEAR RULES AND BUILD";
-
       ls_dir dir |>
-      build
-        ~f:(fun prods dep ->
-            (
-              build_lib dep |>
-              pathI_for_cmi
-            )
-            :: prods
+
+      build ~f:(fun prods dep ->
+          (
+            build_lib dep |>
+            pathI_for_cmi
           )
+          :: prods
+        )
       |> install_rules
 
     )
