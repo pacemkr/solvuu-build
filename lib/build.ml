@@ -45,10 +45,12 @@ module File = struct
   module Dll = Make(struct let ext = ".so" end)
 end
 
+
 type rule = {
   deps : string list;
   prods : string list;
   files : string list;
+  (* commands: (tool * opts) list; *)
   spec : spec option list list;
 }
 
@@ -154,6 +156,25 @@ let install_rules rules =
   | _ -> ()
 
 
+let b =
+
+    ls_dir "lib" |>
+    (* build ~f:lib |> *)
+    build ~f:(fun prods dep ->
+
+        (
+          build_lib dep
+          (* (function *)
+          (*   | Compiled_intf (_, rule) -> *)
+          (*     set_flag Ocamlc "-thread" *)
+          (* ) *)
+        )
+        :: prods
+
+      ) |>
+    (* flag Ocamlc "-thread" |> *)
+    install_rules
+
 
 
 
@@ -200,114 +221,88 @@ let install_rules rules =
 (* List.map ~f:(create Ml) ml_files @ *)
 (* List.map ~f:(create C) c_files *)
 
+(* module Tool = struct *)
+(*   type t = spec option list list *)
+
+(*   let to_command t = *)
+(*     let open Util.Spec in *)
+(*     [[Some (A "ocamlfind"); Some (A "ocamlc")]] *)
+(*     @t.spec *)
+(*     @[List.map t.files ~f:(fun file -> Some (A (File.path file)))] *)
+(*     |> specs_to_command *)
 
 
+(* end *)
 
-
-
-
-
-
-
-(*
-module File : sig
+module Opt : sig
   type t
-
-  type typ =
-    | Ml (* source code! *)
-    | Mli (* interface! *)
-    | Cmo (* bytecode object *)
-    | Cmi (* compiled interface, identical for bytecode and native object *)
-    | Cmx (* native cross-module optimization (inlining) file *)
-    | Cma (* bytecode lib *)
-    | Cmxa (* native lib *)
-    | Cmxs (* shared lib *)
-    | C (* C source code *)
-    | C_o (* C obj *)
-    | C_a (* C static lib *)
-    | C_dll (* C dynamic lib *)
-
-  val create : typ -> string -> t
-  val typ_to_extension : typ -> string
-  val is_of_typ : t -> typ:typ -> bool
-  val replace_extension_exn : t -> old:typ -> new_:typ -> t
-  val filter_by : typ:typ -> t list -> t list
-  val typ : t -> typ
-  val path : t -> string
-  val ls_dir : dir:string -> t list
-
+  val create : [`Unit of string | `String_list of [`None | `Space | `Equal] * string * string list] -> t
+  val to_spec : t -> spec option list
 end = struct
+  type 'a opt = (string -> 'a option -> spec option list) * string * 'a
 
-  type typ =
-    | Ml (* source code! *)
-    | Mli (* interface! *)
-    | Cmo (* bytecode object *)
-    | Cmi (* compiled interface, identical for bytecode and native object *)
-    | Cmx (* native cross-module optimization (inlining) file *)
-    | Cma (* bytecode lib *)
-    | Cmxa (* native lib *)
-    | Cmxs (* shared lib *)
-    | C (* C source code *)
-    | C_o (* C obj *)
-    | C_a (* C static lib *)
-    | C_dll (* C dynamic lib *)
+  type t =
+    | Unit of unit opt
+    | String_list of string list opt
 
-  type t = typ * string
+  let create = function
+    | `Unit opt -> Unit (Util.Spec.unit, opt, ())
+    | `String_list (delim, opt, value) -> String_list (Util.Spec.string_list ~delim, opt, value)
 
-  let typ_to_extension = function
-    | Ml -> ".ml"
-    | Mli -> ".mli"
-    | Cmo -> ".cmo"
-    | Cmi -> ".cmi"
-    | Cmx -> ".cmx"
-    | Cma -> ".cma"
-    | Cmxa -> ".cmxa"
-    | Cmxs -> ".cmxs"
-    | C -> ".c"
-    | C_o -> ".o"
-    | C_a -> ".a"
-    | C_dll -> ".so"
-
-  let create typ path =
-    (typ, path)
-
-  let ls_dir ~dir =
-    let all_files =
-      try Sys.readdir dir |> Array.to_list
-      with _ -> []
-    in
-    let select_files ?add_replace suffix =
-      List.filter all_files ~f:(fun x -> check_suffix x suffix) |> fun l ->
-      (match add_replace with
-       | None -> l
-       | Some (`Add x) -> x@l
-       | Some (`Replace x) -> x
-      ) |>
-      List.sort_uniq ~cmp:String.compare
-    in
-    let ml_files = select_files ".ml" in
-    let mli_files = select_files ".mli" in
-    let c_files = select_files ".c" in
-    List.map ~f:(create Mli) mli_files
-    (* List.map ~f:(create Ml) ml_files @ *)
-    (* List.map ~f:(create C) c_files *)
-
-  let is_of_typ (typ2,_) ~typ = typ = typ2
-
-  let typ (typ,_) = typ
-
-  let path (_,path) = path
-
-  let filter_by ~typ files =
-    List.filter ~f:(is_of_typ ~typ) files
-
-  let replace_extension_exn ((typ, path) : t) ~old ~new_ =
-    (typ, replace_suffix_exn ~old:(typ_to_extension old) ~new_:(typ_to_extension new_) path)
-
-(* (1* Sort files in dependency order before performing any actions. *)
-(*  * Including prioritorizing mli files over ml, etc.*)
-(* let sort_files () = () *)
+  let to_spec = function
+    | Unit (c,f,v) -> c f (Some v)
+    | String_list (c,f,v) -> c f (Some v)
 end
+
+
+module Tool : sig
+  (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
+  type t
+  val create : unit -> t
+  val add_opt : ?desc:string -> t -> opt:(Opt.t) -> t
+  val to_spec : t -> spec option list list
+end = struct
+  (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
+
+  type t = (Opt.t * string option) list
+
+  let create () = []
+  let add_opt ?desc t ~opt = (opt, desc) :: t
+
+  let to_spec (t : t) = List.map t ~f:(fun (opt, _) -> Opt.to_spec opt)
+end
+
+
+module Ocaml_tool = struct
+  include Tool
+
+  let opt = function
+    | `Verbose -> Opt.create (`Unit "-verbose")
+
+  let verbose = add_opt ~opt:(opt `Verbose)
+end
+
+
+module Ocamlc = struct
+  include Ocaml_tool
+
+  let opt = function
+    | `I paths -> Opt.create (`String_list (`Space, "-I", paths))
+
+  let pathI ?desc t path =
+    add_opt ?desc t ~opt:(opt (`I [path]))
+end
+
+
+let bs =
+  let g = Ocaml_tool.create () in
+  Ocaml_tool.verbose ~desc:"Test" g
+
+let bs2 =
+  let g2 = Ocamlc.create () in
+  Ocamlc.verbose g2
+
+
 
 (* Compile module takes prods to deps.
  * Thats a generalization on the entire Build process... *)
@@ -328,7 +323,9 @@ end
  *
  *
  * *)
+(*
 module Ocamlc = struct
+
   type t = {
     deps : File.t list;
     prods : File.t list;
