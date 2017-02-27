@@ -215,99 +215,14 @@ let b =
 
 
 
-  (* let ml_files = select_files ".ml" in *)
-  (* let mli_files = select_files ".mli" in *)
-  (* let c_files = select_files ".c" in *)
-  (* List.map ~f:(fun f -> `Mli (Mli.of_path f)) mli_files *)
-(* List.map ~f:(create Ml) ml_files @ *)
-(* List.map ~f:(create C) c_files *)
-
-(* module Tool = struct *)
-(*   type t = spec option list list *)
-
-(*   let to_command t = *)
-(*     let open Util.Spec in *)
-(*     [[Some (A "ocamlfind"); Some (A "ocamlc")]] *)
-(*     @t.spec *)
-(*     @[List.map t.files ~f:(fun file -> Some (A (File.path file)))] *)
-(*     |> specs_to_command *)
-
-
-(* end *)
-
-module Opt : sig
-  type t
-  val create : [`Unit of string | `String_list of [`None | `Space | `Equal] * string * string list] -> t
-  val to_spec : t -> spec option list
-end = struct
-  type 'a opt = (string -> 'a option -> spec option list) * string * 'a
-
-  type t =
-    | Unit of unit opt
-    | String_list of string list opt
-
-  let create = function
-    | `Unit opt -> Unit (Util.Spec.unit, opt, ())
-    | `String_list (delim, opt, value) -> String_list (Util.Spec.string_list ~delim, opt, value)
-
-  let to_spec = function
-    | Unit (c,f,v) -> c f (Some v)
-    | String_list (c,f,v) -> c f (Some v)
-end
-
-
-module Tool (*: sig
-  (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
+module Tool : sig
   type t
   val create : unit -> t
-  val add_opt : ?desc:string -> t -> opt:(Opt.t) -> t
-  val to_spec : t -> spec option list list
-end *) = struct
-  (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
-
-  (* type 'a flag_conv = string -> 'a option -> spec option list *)
-
-
-  (* type t = (flag * string option) list *)
-
-  (* let create () = [] *)
-
-  (* (1* let add_opt ?desc t ~opt = (opt, desc) :: t *1) *)
-
-  (* let set_flag flag value = *)
-  (*   match flag with *)
-  (*   | Unit fname -> Util.Spec.unit fname (Some ()) *)
-  (*   | String_list (fn, fname) -> fn fname (Some value) *)
-
-  (* let get_flag *)
-
-
-  (* let to_spec (t : t) = List.map t ~f:(fun (opt, _) -> Opt.to_spec opt) *)
-
-
-  (* type flag = string * flag_val *)
-
-  (* type flag_and_desc = flag * string *)
-
-  (* type t = flag_and_desc String.Map.t *)
-
-
-  (* let set_flag ?desc t = *)
-  (*   | `Unit flag -> *)
-
-  (* type flag_val = *)
-  (*   | Unit of string *)
-  (*   | String_list of string list *)
-
-  (* type flag = { *)
-  (*   name : string; *)
-  (*   value : flag_val option; *)
-  (*   desc : string option; *)
-  (* } *)
-
-  let create () = []
-
-
+  val unit_flag : string -> (t -> unit option) * (t -> unit -> t)
+  val string_list_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string list option) * (t -> string list -> t)
+  val to_command : t -> Command.t
+end =
+struct
   type 'a to_spec = 'a option -> spec option list
 
   type flag =
@@ -316,43 +231,39 @@ end *) = struct
 
   type t = (string * flag) list
 
+  let create () = []
 
-  let get_unit_flag name t =
+  let flag_val ~name ~of_flag t =
     match List.Assoc.find t name with
-    | Some (Unit _) -> Some ()
+    | Some flag -> of_flag flag
     | None -> None
-    | _ -> assert false
 
-  let set_unit_flag name t =
-    match get_unit_flag name t with
-    | Some () -> t
-    | None -> (name, Unit (Util.Spec.unit name)) :: t
-
-  let get_string_list_flag name t =
-    match List.Assoc.find t name with
-    | Some String_list (lis, _) -> Some lis
-    | None -> None
-    | _ -> assert false
-
-  let set_string_list_flag ~delim name t value =
+  let set_flag_val ~name ~to_flag t value =
     let t = List.remove_assoc name t in
-    let flag = String_list (value, Util.Spec.string_list ~delim name) in
+    let flag = to_flag name value in
     (name, flag) :: t
 
   let unit_flag name =
-    (get_unit_flag name, set_unit_flag name)
+    let of_flag = function Unit _ -> Some () | _ -> assert false in
+    let to_flag = fun name _ -> Unit (Util.Spec.unit name) in
+    let get = flag_val ~name ~of_flag in
+    let set = set_flag_val ~name ~to_flag in
+    (get, set)
 
   let string_list_flag ~delim name =
-    (get_string_list_flag name, set_string_list_flag ~delim name)
+    let of_flag = function String_list (lis, _) -> Some lis | _ -> assert false in
+    let to_flag = fun name value -> String_list (value, (Util.Spec.string_list ~delim name)) in
+    let get = flag_val ~name ~of_flag in
+    let set = set_flag_val ~name ~to_flag in
+    (get, set)
 
-
-(* end *)
-(*     | `Get -> match flag with Some Unit -> flag | _ -> assert false *)
-
-  (* let to_spec flag = *)
-  (*   match flag with *)
-  (*   | Unit fname -> Util.Spec.unit fname (Some ()) *)
-  (*   | String_list (fname, delim) -> Util.Spec.string_list ~delim fname (Some value) *)
+  let to_command t =
+    List.fold_left ~init:[] ~f:(fun acc (_, flag) ->
+        begin match flag with
+        | Unit to_spec -> to_spec (Some ())
+        | String_list (lis, to_spec) -> to_spec (Some lis)
+        end :: acc
+      ) t |> Util.Spec.specs_to_command
 end
 
 
@@ -362,30 +273,14 @@ module Ocaml_tool = struct
   include Tool
 
   let verbose, set_verbose = unit_flag "-verbose"
-
-  (* let set_verbose = set_unit_flag "-verbose" *)
-
-  (* let verbose t = unit_flag t "-verbose" *)
-  (* let set_verbose t = set_flag t (verbose t) *)
 end
 
 
 module Ocamlc = struct
   include Ocaml_tool
 
-
   let pathI, set_pathI = string_list_flag ~delim:`Space "-I"
 end
-
-
-let bs =
-  let g = Ocaml_tool.create () in
-  Ocaml_tool.verbose ~desc:"Test" g
-
-let bs2 =
-  let g2 = Ocamlc.create () in
-  Ocamlc.verbose g2
-
 
 
 (* Compile module takes prods to deps.
