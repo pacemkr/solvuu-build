@@ -3,7 +3,8 @@ open Printf
 open Util
 open Util.Filename
 
-
+(* This mostly mints new types for each file type,
+ * to prevent accidentally mixing up input formats for tools. *)
 module File = struct
   module type Typ = sig
     type t
@@ -255,42 +256,125 @@ end = struct
 end
 
 
-module Tool : sig
+module Tool (*: sig
   (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
   type t
   val create : unit -> t
   val add_opt : ?desc:string -> t -> opt:(Opt.t) -> t
   val to_spec : t -> spec option list list
-end = struct
+end *) = struct
   (* type 'a opt = (string -> 'a option -> spec option list) * string * 'a *)
 
-  type t = (Opt.t * string option) list
+  (* type 'a flag_conv = string -> 'a option -> spec option list *)
+
+
+  (* type t = (flag * string option) list *)
+
+  (* let create () = [] *)
+
+  (* (1* let add_opt ?desc t ~opt = (opt, desc) :: t *1) *)
+
+  (* let set_flag flag value = *)
+  (*   match flag with *)
+  (*   | Unit fname -> Util.Spec.unit fname (Some ()) *)
+  (*   | String_list (fn, fname) -> fn fname (Some value) *)
+
+  (* let get_flag *)
+
+
+  (* let to_spec (t : t) = List.map t ~f:(fun (opt, _) -> Opt.to_spec opt) *)
+
+
+  (* type flag = string * flag_val *)
+
+  (* type flag_and_desc = flag * string *)
+
+  (* type t = flag_and_desc String.Map.t *)
+
+
+  (* let set_flag ?desc t = *)
+  (*   | `Unit flag -> *)
+
+  (* type flag_val = *)
+  (*   | Unit of string *)
+  (*   | String_list of string list *)
+
+  (* type flag = { *)
+  (*   name : string; *)
+  (*   value : flag_val option; *)
+  (*   desc : string option; *)
+  (* } *)
 
   let create () = []
-  let add_opt ?desc t ~opt = (opt, desc) :: t
 
-  let to_spec (t : t) = List.map t ~f:(fun (opt, _) -> Opt.to_spec opt)
+
+  type 'a to_spec = 'a option -> spec option list
+
+  type flag =
+    | Unit of unit to_spec
+    | String_list of string list * string list to_spec
+
+  type t = (string * flag) list
+
+
+  let get_unit_flag name t =
+    match List.Assoc.find t name with
+    | Some (Unit _) -> Some ()
+    | None -> None
+    | _ -> assert false
+
+  let set_unit_flag name t =
+    match get_unit_flag name t with
+    | Some () -> t
+    | None -> (name, Unit (Util.Spec.unit name)) :: t
+
+  let get_string_list_flag name t =
+    match List.Assoc.find t name with
+    | Some String_list (lis, _) -> Some lis
+    | None -> None
+    | _ -> assert false
+
+  let set_string_list_flag ~delim name t value =
+    let t = List.remove_assoc name t in
+    let flag = String_list (value, Util.Spec.string_list ~delim name) in
+    (name, flag) :: t
+
+  let unit_flag name =
+    (get_unit_flag name, set_unit_flag name)
+
+  let string_list_flag ~delim name =
+    (get_string_list_flag name, set_string_list_flag ~delim name)
+
+
+(* end *)
+(*     | `Get -> match flag with Some Unit -> flag | _ -> assert false *)
+
+  (* let to_spec flag = *)
+  (*   match flag with *)
+  (*   | Unit fname -> Util.Spec.unit fname (Some ()) *)
+  (*   | String_list (fname, delim) -> Util.Spec.string_list ~delim fname (Some value) *)
 end
+
+
 
 
 module Ocaml_tool = struct
   include Tool
 
-  let opt = function
-    | `Verbose -> Opt.create (`Unit "-verbose")
+  let verbose, set_verbose = unit_flag "-verbose"
 
-  let verbose = add_opt ~opt:(opt `Verbose)
+  (* let set_verbose = set_unit_flag "-verbose" *)
+
+  (* let verbose t = unit_flag t "-verbose" *)
+  (* let set_verbose t = set_flag t (verbose t) *)
 end
 
 
 module Ocamlc = struct
   include Ocaml_tool
 
-  let opt = function
-    | `I paths -> Opt.create (`String_list (`Space, "-I", paths))
 
-  let pathI ?desc t path =
-    add_opt ?desc t ~opt:(opt (`I [path]))
+  let pathI, set_pathI = string_list_flag ~delim:`Space "-I"
 end
 
 
