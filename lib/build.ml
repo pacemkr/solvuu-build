@@ -220,18 +220,28 @@ module Tool : sig
   val create : unit -> t
   val unit_flag : string -> (t -> unit option) * (t -> unit -> t)
   val string_list_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string list option) * (t -> string list -> t)
-  val to_command : t -> Command.t
+  val flags : t -> spec list
 end =
 struct
-  type 'a to_spec = 'a option -> spec option list
+  type flag_val =
+    | Unit of spec list
+    | String_list of string list * (string list -> spec list)
 
-  type flag =
-    | Unit of unit to_spec
-    | String_list of string list * string list to_spec
-
-  type t = (string * flag) list
+  type t = (string * flag_val) list
 
   let create () = []
+
+  let string_to_spec ~delim name value =
+    match delim with
+    | `Space -> [A name; A value]
+    | `None -> [A (name ^ value)]
+    | `Equal -> [A (sprintf "%s=%s" name value)]
+
+  let string_list_to_spec ~delim name value =
+      List.map value ~f:(fun x ->
+        string_to_spec ~delim name x
+      ) |>
+      List.flatten
 
   let flag_val ~name ~of_flag t =
     match List.Assoc.find t name with
@@ -244,29 +254,28 @@ struct
     (name, flag) :: t
 
   let unit_flag name =
+    let to_flag = fun name _ -> Unit [A name] in
     let of_flag = function Unit _ -> Some () | _ -> assert false in
-    let to_flag = fun name _ -> Unit (Util.Spec.unit name) in
     let get = flag_val ~name ~of_flag in
     let set = set_flag_val ~name ~to_flag in
     (get, set)
 
   let string_list_flag ~delim name =
+    let to_flag = fun name value -> String_list (value, string_list_to_spec ~delim name) in
     let of_flag = function String_list (lis, _) -> Some lis | _ -> assert false in
-    let to_flag = fun name value -> String_list (value, (Util.Spec.string_list ~delim name)) in
     let get = flag_val ~name ~of_flag in
     let set = set_flag_val ~name ~to_flag in
     (get, set)
 
-  let to_command t =
-    List.fold_left ~init:[] ~f:(fun acc (_, flag) ->
+  let flags t =
+    List.fold_left t ~init:[] ~f:(fun acc (_, flag) ->
         begin match flag with
-        | Unit to_spec -> to_spec (Some ())
-        | String_list (lis, to_spec) -> to_spec (Some lis)
+          | Unit spec -> spec
+          | String_list (lis, to_spec) -> to_spec lis
         end :: acc
-      ) t |> Util.Spec.specs_to_command
+      )
+    |> List.flatten
 end
-
-
 
 
 module Ocaml_tool = struct
@@ -278,6 +287,8 @@ end
 
 module Ocamlc = struct
   include Ocaml_tool
+
+  let to_spec t = (A "ocamlc") :: (flags t)
 
   let pathI, set_pathI = string_list_flag ~delim:`Space "-I"
 end
