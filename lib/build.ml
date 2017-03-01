@@ -52,20 +52,26 @@ end
 (*   to_command *)
 (* end *)
 
-type command =
-  | Ocamlc of Ocamlc.t
+(* type command = *)
+(*   | Ocamlc of Ocamlc.t *)
   (* | Ocamlc of Ocamlc.t *)
+
+
+type cmd = ..
+type cmd =
+  | Ocamlc of Ocamlc.t
+  | Ocamlfind_ocamlc of Ocamlfind_ocamlc.t
 
 
 type rule = {
   deps : string list;
   prods : string list;
-  files : string list;
-  (* commands: (tool * opts) list; *)
-  spec : spec option list list;
+  (* specs : spec list list; *)
+  (* tools: *)
+  cmds : cmd list;
 }
 
-
+type item = ..
 type item =
   | Intf of File.Mli.t
   | Compiled_intf of File.Cmi.t * rule
@@ -110,8 +116,8 @@ let compile_mli mli_file =
   Compiled_intf (cmi_file, {
       deps = [mli_path];
       prods = [cmi_path];
-      files = [mli_path];
-      spec;
+      (* files = [mli_path]; *)
+      cmds = [];
     })
 
 
@@ -127,10 +133,10 @@ let build_lib = function
 
 let pathI_for_cmi dep =
   match dep with
-  | Compiled_intf (file, rule) ->
-    Compiled_intf (file, {rule with spec = Util.Spec.([
-        string_list ~delim:`Space "-I" (Some ["lib"])
-      ]) @ rule.spec})
+  (* | Compiled_intf (file, rule) -> *)
+  (*   Compiled_intf (file, {rule with spec = Util.Spec.([ *)
+  (*       string_list ~delim:`Space "-I" (Some ["lib"]) *)
+  (*     ]) @ rule.spec}) *)
   (* | Compiled_intf (file, rule) -> *)
   (*   Compiled_inf (file, {rule with commands = List.fold_left rule.commands ~f:(function *)
   (*       | Ocamlc mlc -> Ocamlc.set_pathI mli ("lib" :: (Ocamlc.pathI mlc)) *)
