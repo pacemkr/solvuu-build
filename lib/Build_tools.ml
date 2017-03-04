@@ -3,15 +3,17 @@ open Util
 open Printf
 
 
-module Tool : sig
+module type Tool = sig
   type t
   val create : unit -> t
-  val unit_flag : string -> (t -> unit option) * (t -> unit -> t)
-  val string_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string option) * (t -> string -> t)
-  val string_list_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string list option) * (t -> string list -> t)
+  val unit_flag : string -> (t -> unit option) * (t -> t)
+  val string_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string option) * (v:string -> t -> t)
+  val string_list_flag : delim:[`None | `Space | `Equal] -> string -> (t -> string list option) * (v:string list -> t -> t)
   val flags : t -> spec list
-end =
-struct
+  val to_spec : t -> spec list
+end
+
+module Tool : Tool = struct
   type flag_val =
     | Unit of spec list
     | String of string * (string -> spec list)
@@ -38,16 +40,16 @@ struct
     | Some flag -> of_flag flag
     | None -> None
 
-  let set_flag_val ~name ~to_flag t value =
+  let set_flag_val ~name ~to_flag ~v t =
     let t = List.remove_assoc name t in
-    let flag = to_flag name value in
+    let flag = to_flag name v in
     (name, flag) :: t
 
   let unit_flag name =
     let to_flag = fun name _ -> Unit [A name] in
     let of_flag = function Unit _ -> Some () | _ -> assert false in
     let get = flag_val ~name ~of_flag in
-    let set = set_flag_val ~name ~to_flag in
+    let set = set_flag_val ~name ~to_flag ~v:() in
     (get, set)
 
   let string_flag ~delim name =
@@ -73,33 +75,68 @@ struct
         end :: acc
       )
     |> List.flatten
+
+  let to_spec = flags
 end
 
 
-module Ocaml_tool = struct
+module Ocamlx = struct
   include Tool
-
-  let verbose, set_verbose = unit_flag "-verbose"
-end
-
-
-module Ocamlc = struct
-  include Ocaml_tool
-
-  let to_spec t = (A "ocamlc") :: (flags t)
 
   let a, set_a = unit_flag "-a"
   let c, set_c = unit_flag "-c"
   let o, set_o = string_flag ~delim:`Space "-o"
   let pathI, set_pathI = string_list_flag ~delim:`Space "-I"
+  let verbose, set_verbose = unit_flag "-verbose"
 end
 
 
-module Ocamlfind_ocamlc = struct
-  include Ocamlc
+module Ocamlc = struct
+  include Ocamlx
 
-  let to_spec t = (A "ocamlfind") :: (Ocamlc.to_spec t)
+  let to_spec t = (A "ocamlc") :: (flags t)
+end
 
-  let package, set_package = string_list_flag ~delim:`Space "-package"
-  let linkpkg, set_linkpkg = unit_flag "-linkpkg"
+
+module Ocamlopt = struct
+  include Ocamlx
+
+  let to_spec t = (A "ocamlc") :: (flags t)
+end
+
+
+module Ocamlfind = struct
+  (* module type S = sig *)
+  (*   type t *)
+  (*   val package : t -> string list option *)
+  (*   val set_package : v:string list -> t -> t *)
+  (*   val linkpkg : v:unit option -> t *)
+  (*   val set_linkpkg : t -> t *)
+  (*   val to_spec : t -> spec list *)
+  (* end *)
+
+  module Make (T : Tool) (*: S with type t := T.t*) = struct
+    open T
+
+    let to_spec t = (A "ocamlfind") :: (T.to_spec t)
+
+    let package, set_package = string_list_flag ~delim:`Space "-package"
+    let linkpkg, set_linkpkg = unit_flag "-linkpkg"
+  end
+
+  module Ocamlx = struct
+    include Ocamlx
+    include Make(Ocamlx)
+  end
+  module type Ocamlx = module type of Ocamlx
+
+  module Ocamlc = struct
+    include Ocamlc
+    include Make(Ocamlc)
+  end
+
+  module Ocamlopt = struct
+    include Ocamlopt
+    include Make(Ocamlopt)
+  end
 end

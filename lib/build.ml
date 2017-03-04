@@ -4,6 +4,7 @@ open Util
 open Util.Filename
 open Build_tools
 
+
 (* This mostly mints new types for each file type,
  * to prevent accidentally mixing up input formats for tools. *)
 module File = struct
@@ -48,33 +49,23 @@ module File = struct
 end
 
 
-(* module type SimpleTool = sig *)
-(*   to_command *)
-(* end *)
-
-(* type command = *)
-(*   | Ocamlc of Ocamlc.t *)
-  (* | Ocamlc of Ocamlc.t *)
-
-
 type cmd = ..
-type cmd =
+type cmd +=
   | Ocamlc of Ocamlc.t
-  | Ocamlfind_ocamlc of Ocamlfind_ocamlc.t
+  | Ocamlfind_ocamlc of Ocamlfind.Ocamlc.t
 
 
 type rule = {
   deps : string list;
   prods : string list;
-  (* specs : spec list list; *)
-  (* tools: *)
   cmds : cmd list;
 }
 
-type item = ..
-type item =
+
+type artifact = ..
+type artifact +=
   | Intf of File.Mli.t
-  | Compiled_intf of File.Cmi.t * rule
+  | Compiled_intf of rule * File.Cmi.t
   | Rule of rule
 
 
@@ -104,52 +95,44 @@ let ls_dir dir =
     )
 
 
-let compile_mli mli_file =
+let compile_mli ~ocamlc mli_file =
   let open File in
   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
   let cmi_path = Cmi.path cmi_file in
   let mli_path = Mli.path mli_file in
-  let spec = Util.Spec.([
-      string ~delim:`Space "-o" (Some cmi_path);
-    ])
-  in
-  Compiled_intf (cmi_file, {
+  let cmds = [
+    Ocamlfind_ocamlc Ocamlfind.Ocamlc.(
+        set_o ocamlc ~v:cmi_path
+      );
+  ] in
+  Compiled_intf ({
       deps = [mli_path];
       prods = [cmi_path];
-      (* files = [mli_path]; *)
-      cmds = [];
-    })
+      cmds;
+    }, cmi_file)
 
 
-let build_lib = function
+let build_lib ~dir ~findlib_deps artifact =
+  let open Ocamlfind in
+  let create (module X : Ocamlx) =
+    X.(
+      create () |>
+      set_verbose |>
+      set_package ~v:findlib_deps |>
+      set_pathI ~v:[dir]
+    )
+  in
+  let ocamlc = create (module Ocamlc) in
+  let ocamlopt = create (module Ocamlopt) in
+  match artifact with
   (* | `Src _ -> dep *)
-  | Intf mli_file -> (compile_mli mli_file) (* <- list of prods *)
-  | Compiled_intf (_, rule) -> (Rule rule)
-  | Rule _ as r -> r
-
-(* let set_flag_globally = function *)
-(*   | Ocamlc mlc -> Ocamlc.set_pathI mlc ("lib" :: (Ocamlc.pathI mlc)) *)
-(*   | _ as cmd -> cmd *)
-
-let pathI_for_cmi dep =
-  match dep with
-  (* | Compiled_intf (file, rule) -> *)
-  (*   Compiled_intf (file, {rule with spec = Util.Spec.([ *)
-  (*       string_list ~delim:`Space "-I" (Some ["lib"]) *)
-  (*     ]) @ rule.spec}) *)
-  (* | Compiled_intf (file, rule) -> *)
-  (*   Compiled_inf (file, {rule with commands = List.fold_left rule.commands ~f:(function *)
-  (*       | Ocamlc mlc -> Ocamlc.set_pathI mli ("lib" :: (Ocamlc.pathI mlc)) *)
-  (*       | _ as cmd -> cmd *)
-  (*     ) *)
-  (* | Rule r -> {r with commands = List.fold_left r.commands ~f:(function *)
-  (*       | Ocamlc mlc -> Ocamlc.set_pathI mlc ("lib" :: (Ocamlc.pathI mlc)) *)
-  (*       | _ as cmd -> cmd *)
-  (*   )} *)
-  | _ as prod -> prod
+  | Intf mli_file -> (compile_mli ~ocamlc mli_file) (* <- list of prods *)
+  | Compiled_intf (rule, _) -> (Rule rule)
+  | a -> a
 
 
 (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
+(*       Use a graph to keep track of steps and to check for loops? *)
 let rec build
     ?(target=(List.for_all ~f:is_rule))
     ?(init=[])
