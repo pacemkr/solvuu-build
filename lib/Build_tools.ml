@@ -80,6 +80,7 @@ module Tool : Tool = struct
 end
 
 
+(* Contains flags shared between ocamlc and ocamlopt *)
 module Ocamlx = struct
   include Tool
 
@@ -124,6 +125,10 @@ module Ocamlfind = struct
     let linkpkg, set_linkpkg = unit_flag "-linkpkg"
   end
 
+  (* This isn't an actual tool, so we won't expose it.
+   * It is just an easy way to get a module type, which is exposed, that can be used to create
+   * polymorphic functions that work with both Ocamlc and Ocamlopt modules. Used to set common flags, for example.
+   *)
   module Ocamlx = struct
     include Ocamlx
     include Make(Ocamlx)

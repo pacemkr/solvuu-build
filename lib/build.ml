@@ -4,6 +4,15 @@ open Util
 open Util.Filename
 open Build_tools
 
+(* TODO: TESTS
+ *
+ * - Mli as first processed file with Ml dependencies.
+ *   We're not using dynamic dependency capability of ocamlbuild since each run of SB
+ *   puts together a tailored rule set just for that invocation. Hence, we can run any
+ *   tools (just ocamldep in practice?) to get a list of dependencies at the time of invocation,
+ *   and including any additional dependencies in ~deps.
+ *
+ *)
 
 (* This mostly mints new types for each file type,
  * to prevent accidentally mixing up input formats for tools. *)
@@ -97,6 +106,7 @@ let ls_dir dir =
 
 let compile_mli ~ocamlc mli_file =
   let open File in
+  let mli_file =
   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
   let cmi_path = Cmi.path cmi_file in
   let mli_path = Mli.path mli_file in
@@ -132,7 +142,7 @@ let build_lib ~dir ~findlib_deps artifact =
 
 
 (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
-(*       Use a graph to keep track of steps and to check for loops? *)
+(*       Use a graph to keep track of circular dependecies at each recursion. *)
 let rec build
     ?(target=(List.for_all ~f:is_rule))
     ?(init=[])
