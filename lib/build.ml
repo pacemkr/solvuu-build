@@ -106,7 +106,6 @@ let ls_dir dir =
 
 let compile_mli ~ocamlc mli_file =
   let open File in
-  let mli_file =
   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
   let cmi_path = Cmi.path cmi_file in
   let mli_path = Mli.path mli_file in
@@ -122,43 +121,16 @@ let compile_mli ~ocamlc mli_file =
     }, cmi_file)
 
 
-let build_lib ~dir ~findlib_deps artifact =
-  let open Ocamlfind in
-  let create (module X : Ocamlx) =
-    X.(
-      create () |>
-      set_verbose |>
-      set_package ~v:findlib_deps |>
-      set_pathI ~v:[dir]
-    )
-  in
-  let ocamlc = create (module Ocamlc) in
-  let ocamlopt = create (module Ocamlopt) in
-  match artifact with
-  (* | `Src _ -> dep *)
-  | Intf mli_file -> (compile_mli ~ocamlc mli_file) (* <- list of prods *)
-  | Compiled_intf (rule, _) -> (Rule rule)
-  | a -> a
-
-
 (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
 (*       Use a graph to keep track of circular dependecies at each recursion. *)
 let rec build
-    ?(target=(List.for_all ~f:is_rule))
+    ?(is_target=(List.for_all ~f:is_rule))
     ?(init=[])
     ~f
     deps
   =
-  if (target deps) then deps
-  else build ~target ~f (List.fold_left ~init ~f deps)
-
-
-let lib prods dep =
-  (
-    build_lib dep |>
-    pathI_for_cmi
-  )
-  :: prods
+  if (is_target deps) then deps
+  else build ~is_target ~f (List.fold_left ~init ~f deps)
 
 
 let install_rules rules =
@@ -168,13 +140,40 @@ let install_rules rules =
       Ocamlbuild_plugin.clear_rules();
 
       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |>
-      List.iter ~f:(fun {deps; prods; files; spec} ->
+      List.iter ~f:(fun {deps; prods; cmds} ->
           Rule.rule ~deps ~prods (fun _ _ ->
               to_command spec files
           )
         )
     )
   | _ -> ()
+
+
+let build_lib ~dir ~findlib_deps artifact =
+  let open Ocamlfind in
+  let create (module Common : Ocamlx) =
+    Common.(
+      create () |>
+      set_verbose |>
+      set_package ~v:findlib_deps |>
+      set_pathI ~v:[dir]
+    )
+  in
+  let ocamlc = create (module Ocamlc) in
+  (* let ocamlopt = create (module Ocamlopt) in *)
+  match artifact with
+  (* | `Src _ -> dep *)
+  | Intf mli_file -> (compile_mli ~ocamlc mli_file) (* <- list of prods *)
+  | Compiled_intf (rule, _) -> (Rule rule)
+  | a -> a
+
+
+let lib prods dep =
+  (
+    build_lib dep |>
+    pathI_for_cmi
+  )
+  :: prods
 
 
 let b =
