@@ -65,13 +65,13 @@ open File
 (* type _ ocamlc_output += *)
 (*   | Cmi : File.Mli.t -> File.Cmi.t ocamlc_output *)
 
-type ocamlc_c_flags = ..
-type ocamlc_c_flags +=
+type ocamlc_compile_flags = ..
+type ocamlc_compile_flags +=
   | O of File.Cmi.t
 
 type ocamlc = ..
 type ocamlc +=
-  | Compile of ocamlc_c_flags list
+  | Compile of ocamlc_compile_flags list
 (* | Archive of File.Mli.t ocamlc_output *)
 
 
@@ -100,27 +100,14 @@ type _ artifact +=
   | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact
 
 
-let compile_mli ~ocamlc mli_file =
+let compile_mli ~ocamlc_flags mli_file =
   let open File in
   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
-  (* let cmi_path = Cmi.path cmi_file in *)
-  (* let mli_path = Mli.path mli_file in *)
-
-  (* let cmds = [ *)
-  (*   (Com [(Mlc_o cmi_path)]) *)
-
-  (*   (1* Ocamlfind_ocamlc Ocamlfind.Ocamlc.( *1) *)
-  (*   (1*     set_o ocamlc ~v:cmi_path *1) *)
-  (*   (1*   ); *1) *)
-  (* ] in *)
-
-
   Compiled_interface {
     deps = [mli_file];
     prods = [cmi_file];
-    cmds = (Cmd (Ocamlc (Compile [O cmi_file]), End));
+    cmds = (Cmd (Ocamlc (Compile ((O cmi_file) :: ocamlc_flags)), End));
   }
-    (* }, cmi_file) *)
 
 (* type ocamlc_flag = .. *)
 (* type ocamlc_flag += *)
