@@ -2,7 +2,7 @@ open Ocamlbuild_plugin
 open Printf
 open Util
 open Util.Filename
-open Build_tools
+(* open Build_tools *)
 
 (* TODO: TESTS
  *
@@ -58,16 +58,105 @@ module File = struct
 end
 
 
-type cmd = ..
-type cmd +=
-  | Ocamlc of Ocamlc.t
-  | Ocamlfind_ocamlc of Ocamlfind.Ocamlc.t
+open File
 
 
+(* type _ ocamlc_output = .. *)
+(* type _ ocamlc_output += *)
+(*   | Cmi : File.Mli.t -> File.Cmi.t ocamlc_output *)
+
+type ocamlc_c_flags = ..
+type ocamlc_c_flags +=
+  | O of File.Cmi.t
+
+type ocamlc = ..
+type ocamlc +=
+  | Compile of ocamlc_c_flags list
+(* | Archive of File.Mli.t ocamlc_output *)
+
+
+type _ cmd = ..
+type _ cmd +=
+  | Ocamlc : ocamlc -> ocamlc cmd
+
+
+type 'tail cmds =
+  | Cmd : 'hd cmd * 'tail cmds -> ('hd * 'tail) cmds
+  | End : unit cmds
+
+
+(* type cmds = Existential_cmds : 'cmds cmd *)
+
+
+type ('a, 'b, 'c) rule = {
+  deps : 'a list;
+  prods : 'b list;
+  cmds : 'c cmds;
+}
+
+
+type _ artifact = ..
+type _ artifact +=
+  | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact
+
+
+let compile_mli ~ocamlc mli_file =
+  let open File in
+  let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
+  (* let cmi_path = Cmi.path cmi_file in *)
+  (* let mli_path = Mli.path mli_file in *)
+
+  (* let cmds = [ *)
+  (*   (Com [(Mlc_o cmi_path)]) *)
+
+  (*   (1* Ocamlfind_ocamlc Ocamlfind.Ocamlc.( *1) *)
+  (*   (1*     set_o ocamlc ~v:cmi_path *1) *)
+  (*   (1*   ); *1) *)
+  (* ] in *)
+
+
+  Compiled_interface {
+    deps = [mli_file];
+    prods = [cmi_file];
+    cmds = (Cmd (Ocamlc (Compile [O cmi_file]), End));
+  }
+    (* }, cmi_file) *)
+
+(* type ocamlc_flag = .. *)
+(* type ocamlc_flag += *)
+(*   | Mlc_o of string *)
+
+(* type ocamlc_expr = ocamlc_flag list *)
+
+(* type _ expr = .. *)
+(* type _ expr = *)
+(*   (1* | Unit : spec list expr *1) *)
+(*   (1* | String : (string * (string -> spec list)) expr *1) *)
+(*   (1* | String_list : (string list * (string list -> spec list)) expr *1) *)
+(*   (1* | Set_o : string -> 'a list expr *1) *)
+(*   (1* | Set_c : string -> 'b list expr *1) *)
+(*   | Ocamlc : ocamlc_expr -> ocamlc_expr expr *)
+
+
+(* let rec expr_to_cmd : type a b . a expr -> b expr = *)
+(*   match expr with *)
+(*   | Ocamlc flags -> expr_to_cmd flags *)
+  (* | Set_o string -> *)
+  (* | other -> expr_to_cmd (extend other) *)
+
+(* type cmd = .. *)
+(* type cmd += *)
+(*   | Ocamlc of Ocamlc.t *)
+(*   | Ocamlfind_ocamlc of Ocamlfind.Ocamlc.t *)
+
+
+(* type tool = cmd ToolList.t *)
+
+(*
 type rule = {
   deps : string list;
   prods : string list;
-  cmds : cmd list;
+  (* spec : expr; *)
 }
 
 
@@ -110,14 +199,16 @@ let compile_mli ~ocamlc mli_file =
   let cmi_path = Cmi.path cmi_file in
   let mli_path = Mli.path mli_file in
   let cmds = [
-    Ocamlfind_ocamlc Ocamlfind.Ocamlc.(
-        set_o ocamlc ~v:cmi_path
-      );
+    (Ocamlcc [(Mlc_o cmi_path)])
+
+    (* Ocamlfind_ocamlc Ocamlfind.Ocamlc.( *)
+    (*     set_o ocamlc ~v:cmi_path *)
+    (*   ); *)
   ] in
   Compiled_intf ({
       deps = [mli_path];
       prods = [cmi_path];
-      cmds;
+      spec;
     }, cmi_file)
 
 
@@ -142,8 +233,17 @@ let install_rules rules =
       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |>
       List.iter ~f:(fun {deps; prods; cmds} ->
           Rule.rule ~deps ~prods (fun _ _ ->
-              to_command spec files
-          )
+
+
+              (* get tool from cmd variant *)
+
+
+              List.map cmds ~f:(function
+                  | (t : cmd) -> Tool.to_spec t
+
+                  (* | a -> a *)
+                )
+            )
         )
     )
   | _ -> ()
@@ -165,6 +265,13 @@ let build_lib ~dir ~findlib_deps artifact =
   (* | `Src _ -> dep *)
   | Intf mli_file -> (compile_mli ~ocamlc mli_file) (* <- list of prods *)
   | Compiled_intf (rule, _) -> (Rule rule)
+  (* | Rule {deps; prods; cmds} -> *)
+  (*   Rule.rule ~deps ~prods (fun _ _ -> *)
+  (*       List.map cmds ~f:(function *)
+  (*           | tool : Tool as t -> Tool.to_spec t *)
+  (*           | a -> a *)
+  (*         ) *)
+  (*     ) *)
   | a -> a
 
 
@@ -183,7 +290,10 @@ let b =
     build ~f:(fun prods dep ->
 
         (
-          build_lib dep
+          build_lib dep |>
+          function
+          | (_,
+          Build.eval (Ocamlc Set_verbose)
           (* (function *)
           (*   | Compiled_intf (_, rule) -> *)
           (*     set_flag Ocamlc "-thread" *)
@@ -527,3 +637,4 @@ end
 (* Ocamlc.with_new_opt : experimental_opts -> M : Ocamlc *)
 
 (* module CompileBytecode = BuildWith(Ocamlc) *)
+   *)
