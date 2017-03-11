@@ -22,7 +22,7 @@ type _ expr = ..
 
 
 type 'hd exprs =
-  | Run : 'hd expr * 'next exprs -> ('hd * 'next) exprs
+  | Run : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
   | End : unit exprs
 
 (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
@@ -93,20 +93,13 @@ end
 open File
 
 
-type 'hd expr_list =
-  | Lis : 'hd expr * 'next expr_list -> ('hd * 'next) expr_list
-  | End : unit expr_list
+(* type 'hd expr_list = *)
+(*   | Lis : 'hd expr * 'next expr_list -> ('hd * 'next) expr_list *)
+(*   | End : unit expr_list *)
 
-module Ocamlc = struct
-  type 'hd flags =
-    | Lis : 'hd expr * 'next flags -> ('hd * 'next) flags
-    | End : unit flags
-
-  type _ expr +=
-    | Flg : 'hd flags expr * 'tail flags expr -> ('hd * 'tail) flags expr
-    | O : File.Cmi.t -> File.Cmi.t flags expr
-    | V : unit flags expr
-    | End : unit flags expr
+(* module Tool = struct *)
+(*   module type S = sig *)
+(*   end *)
 
   (* type ocamlc_compile_flags = .. *)
   (* type ocamlc_compile_flags += *)
@@ -124,26 +117,45 @@ module Ocamlc = struct
   (* let to_spec = function *)
   (*   | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags) *)
   (*   | _ -> raise Not_found *)
+
+module Tool = struct
+  (* type 'a flag *)
+
+  (* type _ expr += *)
+  (*   | Flg : 'hd flag expr * 'tail flag expr -> ('hd * 'tail) flag expr *)
+  (*   | End : unit flag expr *)
 end
 
-module Ocamlopt = struct
-  type 'hd flags =
-    | Lis : 'hd expr * 'next flags -> ('hd * 'next) flags
-    | End : unit flags
+module Ocamlc = struct
+  include Tool
 
   type _ expr +=
-    | Flg : 'hd flags expr * 'tail flags expr -> ('hd * 'tail) flags expr
-    | I : string -> string flags expr
-    | V : unit flags expr
-    | End : unit flags expr
+    (* | O : File.Cmi.t * 'a expr_list -> File.Cmi.t expr *)
+    | O : string * ('a exprs) -> (string * 'a exprs) expr
+
 end
+
+(* module Ocamlopt = struct *)
+(*   include Tool *)
+
+(*   type _ expr += *)
+(*     | O : File.Mli.t -> File.Mli.t flag expr *)
+(*     | I : string -> string expr *)
+(*     | V : unit expr *)
+(* end *)
+
+let make_expr =
+  Run (Ocamlc.(O ("file.out", End)), End)
+           (* Run (Ocamlopt.(Flg (V, End)), *)
+           (*      End)) *)
+
 
 (* type _ expr += *)
   (* | Ocamlc : 'a Ocamlc.flags -> 'a Ocamlc.flags expr *)
 
 
-type _ artifact +=
-  | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact
+(* type _ artifact += *)
+(*   | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact *)
 
 
 (* let cmd_to_spec : type a . a cmd -> Ob.spec list = function *)
@@ -156,22 +168,19 @@ type _ artifact +=
 (*   | End -> [] *)
 
 
-
-
-
-let compile_mli mli_file =
-  let open File in
-  let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
-  Compiled_interface {
-    deps = [mli_file];
-    prods = [cmi_file];
-    (* exprs = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End)); *)
-    exprs = (
-      Run (Ocamlc.(Flg (Ocamlopt.V, End)), End)
-           (* Run (Ocamlopt.(Flg (V, End)), *)
-           (*      End)) *)
-    );
-  }
+(* let compile_mli mli_file = *)
+(*   let open File in *)
+(*   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in *)
+(*   Compiled_interface { *)
+(*     deps = [mli_file]; *)
+(*     prods = [cmi_file]; *)
+(*     (1* exprs = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End)); *1) *)
+(*     exprs = ( *)
+(*       Run (Ocamlc.(Flg (Ocamlopt.V, End)), End) *)
+(*            (1* Run (Ocamlopt.(Flg (V, End)), *1) *)
+(*            (1*      End)) *1) *)
+(*     ); *)
+(*   } *)
 
 
 
