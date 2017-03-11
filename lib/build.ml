@@ -93,31 +93,53 @@ end
 open File
 
 
-module Ocamlc = struct
-  type ocamlc_compile_flags = ..
-  type ocamlc_compile_flags +=
-    | O of File.Cmi.t
+type 'hd expr_list =
+  | Lis : 'hd expr * 'next expr_list -> ('hd * 'next) expr_list
+  | End : unit expr_list
 
-  type t = ..
-  type t +=
-    | Compile of ocamlc_compile_flags list
+module Ocamlc = struct
+  type 'hd flags =
+    | Lis : 'hd expr * 'next flags -> ('hd * 'next) flags
+    | End : unit flags
+
+  type _ expr +=
+    | Flg : 'hd flags expr * 'tail flags expr -> ('hd * 'tail) flags expr
+    | O : File.Cmi.t -> File.Cmi.t flags expr
+    | V : unit flags expr
+    | End : unit flags expr
+
+  (* type ocamlc_compile_flags = .. *)
+  (* type ocamlc_compile_flags += *)
+
+  (* type t = .. *)
+  (* type t += *)
+  (*   | Compile of ocamlc_compile_flags list *)
 (*| Archive of File.Mli.t ocamlc_output *)
 
-  let flags_to_spec = List.map ~f:(function
-      | O cmi_file -> (Ob.A (Cmi.path cmi_file))
-      | _ -> raise Not_found
-    )
+  (* let flags_to_spec = List.map ~f:(function *)
+  (*     | O cmi_file -> (Ob.A (Cmi.path cmi_file)) *)
+  (*     | _ -> raise Not_found *)
+  (*   ) *)
 
-  let to_spec = function
-    | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags)
-    | _ -> raise Not_found
+  (* let to_spec = function *)
+  (*   | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags) *)
+  (*   | _ -> raise Not_found *)
 end
 
-type ocamlc_flag
-type _ expr +=
-  | Ocamlc : ocamlc_flag exprs -> 'a expr
-  | Ocamlc_o  : ocamlc_flag -> ocamlc_flag expr
-  | Ocamlc_I  : ocamlc_flag -> ocamlc_flag expr
+module Ocamlopt = struct
+  type 'hd flags =
+    | Lis : 'hd expr * 'next flags -> ('hd * 'next) flags
+    | End : unit flags
+
+  type _ expr +=
+    | Flg : 'hd flags expr * 'tail flags expr -> ('hd * 'tail) flags expr
+    | I : string -> string flags expr
+    | V : unit flags expr
+    | End : unit flags expr
+end
+
+(* type _ expr += *)
+  (* | Ocamlc : 'a Ocamlc.flags -> 'a Ocamlc.flags expr *)
 
 
 type _ artifact +=
@@ -134,20 +156,47 @@ type _ artifact +=
 (*   | End -> [] *)
 
 
-let compile_mli ~ocamlc_flags mli_file =
+
+
+
+let compile_mli mli_file =
   let open File in
   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
   Compiled_interface {
     deps = [mli_file];
     prods = [cmi_file];
     (* exprs = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End)); *)
-    exprs = (Run (Ocamlc [(Ocamlc_I cmi_file)], End));
+    exprs = (
+      Run (Ocamlc.(Flg (Ocamlopt.V, End)), End)
+           (* Run (Ocamlopt.(Flg (V, End)), *)
+           (*      End)) *)
+    );
   }
 
 
 
+(* let to_cmd extend lookup expr = function *)
+(*   | unknown_expr -> lookup unknown_expr *)
 
 
+
+
+(* module Custom_tools = Ocaml_tools.Make(struct *)
+(*     module Ocamlc = Ocamlc.Make( *)
+(*   end) *)
+
+
+(* module Build_ocamlfuse = Build.Make(struct *)
+(*   module Ocamlc = struct *)
+(*     include Ocaml_tools.Ocamlc *)
+
+(*     type flags += V *)
+
+(*     let to_spec = function *)
+(*       | V -> *)
+(*       | a -> Ocamlc.to_spec(a) *)
+(*   end *)
+(* end) *)
 
 
 (* type ocamlc_flag = .. *)
