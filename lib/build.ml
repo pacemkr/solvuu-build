@@ -18,12 +18,12 @@ open Util.Filename
 
 (* Core *)
 
-type _ cmd = ..
+type _ expr = ..
 
 
-type 'hd cmds =
-  | Run : 'hd cmd * 'next cmds -> ('hd * 'next) cmds
-  | End : unit cmds
+type 'hd exprs =
+  | Run : 'hd expr * 'next exprs -> ('hd * 'next) exprs
+  | End : unit exprs
 
 (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
 
@@ -31,7 +31,7 @@ type 'hd cmds =
 type ('a, 'b, 'c) rule = {
   deps : 'a list;
   prods : 'b list;
-  cmds : 'c cmds;
+  exprs : 'c exprs;
 }
 
 
@@ -113,22 +113,25 @@ module Ocamlc = struct
     | _ -> raise Not_found
 end
 
+type ocamlc_flag
+type _ expr +=
+  | Ocamlc : ocamlc_flag exprs -> 'a expr
+  | Ocamlc_o  : ocamlc_flag -> ocamlc_flag expr
+  | Ocamlc_I  : ocamlc_flag -> ocamlc_flag expr
 
-type _ cmd +=
-  | Ocamlc : Ocamlc.t -> Ocamlc.t cmd
 
 type _ artifact +=
   | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact
 
 
-let cmd_to_spec : type a . a cmd -> Ob.spec list = function
-  | Ocamlc t -> (Ob.A "ocamlc") :: (Ocamlc.to_spec t)
-  | _ -> raise Not_found
+(* let cmd_to_spec : type a . a cmd -> Ob.spec list = function *)
+(*   | Ocamlc t -> (Ob.A "ocamlc") :: (Ocamlc.to_spec t) *)
+(*   | _ -> raise Not_found *)
 
 
-let rec cmds_to_spec : type a . a cmds -> Ob.Command.t list = function
-  | Run (cmd, next) -> (Ob.Cmd (Ob.S (cmd_to_spec cmd))) ::  (cmds_to_spec next)
-  | End -> []
+(* let rec cmds_to_spec : type a . a cmds -> Ob.Command.t list = function *)
+(*   | Run (cmd, next) -> (Ob.Cmd (Ob.S (cmd_to_spec cmd))) ::  (cmds_to_spec next) *)
+(*   | End -> [] *)
 
 
 let compile_mli ~ocamlc_flags mli_file =
@@ -137,7 +140,8 @@ let compile_mli ~ocamlc_flags mli_file =
   Compiled_interface {
     deps = [mli_file];
     prods = [cmi_file];
-    cmds = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End));
+    (* exprs = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End)); *)
+    exprs = (Run (Ocamlc [(Ocamlc_I cmi_file)], End));
   }
 
 
