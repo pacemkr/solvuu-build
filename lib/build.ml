@@ -1,4 +1,3 @@
-open Ocamlbuild_plugin
 open Printf
 open Util
 open Util.Filename
@@ -13,6 +12,40 @@ open Util.Filename
  *   and including any additional dependencies in ~deps.
  *
  *)
+
+
+
+
+(* Core *)
+
+type _ cmd = ..
+
+
+type 'hd cmds =
+  | Run : 'hd cmd * 'next cmds -> ('hd * 'next) cmds
+  | End : unit cmds
+
+(* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
+
+
+type ('a, 'b, 'c) rule = {
+  deps : 'a list;
+  prods : 'b list;
+  cmds : 'c cmds;
+}
+
+
+type _ artifact = ..
+
+
+
+
+
+
+
+(* Ocaml *)
+
+module Ob = Ocamlbuild_plugin
 
 (* This mostly mints new types for each file type,
  * to prevent accidentally mixing up input formats for tools. *)
@@ -57,47 +90,45 @@ module File = struct
   module Dll = Make(struct let ext = ".so" end)
 end
 
-
 open File
 
 
-(* type _ ocamlc_output = .. *)
-(* type _ ocamlc_output += *)
-(*   | Cmi : File.Mli.t -> File.Cmi.t ocamlc_output *)
+module Ocamlc = struct
+  type ocamlc_compile_flags = ..
+  type ocamlc_compile_flags +=
+    | O of File.Cmi.t
 
-type ocamlc_compile_flags = ..
-type ocamlc_compile_flags +=
-  | O of File.Cmi.t
+  type t = ..
+  type t +=
+    | Compile of ocamlc_compile_flags list
+(*| Archive of File.Mli.t ocamlc_output *)
 
-type ocamlc = ..
-type ocamlc +=
-  | Compile of ocamlc_compile_flags list
-(* | Archive of File.Mli.t ocamlc_output *)
+  let flags_to_spec = List.map ~f:(function
+      | O cmi_file -> (Ob.A (Cmi.path cmi_file))
+      | _ -> raise Not_found
+    )
+
+  let to_spec = function
+    | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags)
+    | _ -> raise Not_found
+end
 
 
-type _ cmd = ..
 type _ cmd +=
-  | Ocamlc : ocamlc -> ocamlc cmd
+  | Ocamlc : Ocamlc.t -> Ocamlc.t cmd
 
-
-type 'tail cmds =
-  | Cmd : 'hd cmd * 'tail cmds -> ('hd * 'tail) cmds
-  | End : unit cmds
-
-
-(* type cmds = Existential_cmds : 'cmds cmd *)
-
-
-type ('a, 'b, 'c) rule = {
-  deps : 'a list;
-  prods : 'b list;
-  cmds : 'c cmds;
-}
-
-
-type _ artifact = ..
 type _ artifact +=
   | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact
+
+
+let cmd_to_spec : type a . a cmd -> Ob.spec list = function
+  | Ocamlc t -> (Ob.A "ocamlc") :: (Ocamlc.to_spec t)
+  | _ -> raise Not_found
+
+
+let rec cmds_to_spec : type a . a cmds -> Ob.Command.t list = function
+  | Run (cmd, next) -> (Ob.Cmd (Ob.S (cmd_to_spec cmd))) ::  (cmds_to_spec next)
+  | End -> []
 
 
 let compile_mli ~ocamlc_flags mli_file =
@@ -106,8 +137,14 @@ let compile_mli ~ocamlc_flags mli_file =
   Compiled_interface {
     deps = [mli_file];
     prods = [cmi_file];
-    cmds = (Cmd (Ocamlc (Compile ((O cmi_file) :: ocamlc_flags)), End));
+    cmds = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End));
   }
+
+
+
+
+
+
 
 (* type ocamlc_flag = .. *)
 (* type ocamlc_flag += *)
