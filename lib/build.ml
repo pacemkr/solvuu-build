@@ -1,7 +1,6 @@
 open Printf
 open Util
 open Util.Filename
-(* open Build_tools *)
 
 (* TODO: TESTS
  *
@@ -14,140 +13,106 @@ open Util.Filename
  *)
 
 
+module Dsl = struct
+  type _ expr = ..
 
 
-(* Core *)
-
-type _ expr = ..
-
-
-type 'hd exprs =
-  | Cmd : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
-  | End : unit exprs
-
-(* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
-
-
-type ('a, 'b, 'c) rule = {
-  deps : 'a list;
-  prods : 'b list;
-  exprs : 'c exprs;
-}
-
-
-type _ artifact = ..
-
-
-
-
-
-
-
-(* Ocaml *)
-
-module Ob = Ocamlbuild_plugin
-
-(* This mostly mints new types for each file type,
- * to prevent accidentally mixing up input formats for tools. *)
-module File = struct
-  module type Typ = sig
-    type t
-    val ext : string
-    val of_path : string -> t
-    val path : t -> string
-    val replace_ext : ext:string -> t -> string
+  module Expr_typ () = struct
+    (* Mint new abstract type `a`, this ensures that `t` will not unify with any other type. *)
+    type 'a a
+    type 'a t = 'a a
   end
 
-  module Make(Ft : sig val ext : string end) : Typ = struct
-    include Ft
 
-    type t = string
-    let of_path path = path
-    let path t = t
-    let replace_ext ~ext = replace_suffix_exn ~old:Ft.ext ~new_:ext
+  type 'a exprs =
+    | Cmd : 'a expr * 'b exprs -> ('a * 'b) exprs
+    | End : unit exprs
+
+  (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
+
+
+  type ('a, 'b, 'c) rule = {
+    deps : 'a list;
+    prods : 'b list;
+    exprs : 'c exprs;
+  }
+
+
+  type _ expr +=
+    | Rule : 'a * 'b * 'c -> ('a, 'b, 'c) rule expr
+end
+
+
+
+
+module Build_ocaml = struct
+  include Dsl
+
+  (* This mostly mints new types for each file type,
+   * to prevent accidentally mixing up input formats for tools. *)
+  module File = struct
+    module type Typ = sig
+      type t
+      val ext : string
+      val of_path : string -> t
+      val path : t -> string
+      val replace_ext : ext:string -> t -> string
+    end
+
+    module Make(Ft : sig val ext : string end) : Typ = struct
+      include Ft
+
+      type t = string
+      let of_path path = path
+      let path t = t
+      let replace_ext ~ext = replace_suffix_exn ~old:Ft.ext ~new_:ext
+    end
+
+    let typ_conv
+      (type a)
+      (type b)
+      (module From : Typ with type t = a)
+      (module To : Typ with type t = b)
+      (file : a) : b
+      =
+      To.of_path (replace_suffix_exn ~old:From.ext ~new_:To.ext (From.path file))
+
+    module Ml = Make(struct let ext = ".ml" end)
+    module Mli = Make(struct let ext = ".mli" end)
+    module Cmo = Make(struct let ext = ".cmo" end)
+    module Cmi = Make(struct let ext = ".cmi" end)
+    module Cmx = Make(struct let ext = ".cmx" end)
+    module Cma = Make(struct let ext = ".cma" end)
+    module Cmxa = Make(struct let ext = ".cmxa" end)
+    module Cmxs = Make(struct let ext = ".cmxs" end)
+    module C = Make(struct let ext = ".c" end)
+    module O = Make(struct let ext = ".o" end)
+    module A = Make(struct let ext = ".a" end)
+    module Dll = Make(struct let ext = ".so" end)
   end
 
-  let typ_conv
-    (type a)
-    (type b)
-    (module From : Typ with type t = a)
-    (module To : Typ with type t = b)
-    (file : a) : b
-    =
-    To.of_path (replace_suffix_exn ~old:From.ext ~new_:To.ext (From.path file))
+  module Ocamlc = struct
+    module T = Expr_typ ()
 
-  module Ml = Make(struct let ext = ".ml" end)
-  module Mli = Make(struct let ext = ".mli" end)
-  module Cmo = Make(struct let ext = ".cmo" end)
-  module Cmi = Make(struct let ext = ".cmi" end)
-  module Cmx = Make(struct let ext = ".cmx" end)
-  module Cma = Make(struct let ext = ".cma" end)
-  module Cmxa = Make(struct let ext = ".cmxa" end)
-  module Cmxs = Make(struct let ext = ".cmxs" end)
-  module C = Make(struct let ext = ".c" end)
-  module O = Make(struct let ext = ".o" end)
-  module A = Make(struct let ext = ".a" end)
-  module Dll = Make(struct let ext = ".so" end)
-end
+    type _ expr +=
+      | O : string * 'a T.t expr -> string T.t expr
+      | I : string * 'a T.t expr -> string T.t expr
+      | End : unit T.t expr (* Empty tail constructor. *)
+  end
 
-open File
+  module Ocamlopt = struct
+    module T = Expr_typ ()
 
-
-(* type 'hd expr_list = *)
-(*   | Lis : 'hd expr * 'next expr_list -> ('hd * 'next) expr_list *)
-(*   | End : unit expr_list *)
-
-(* module tool = struct *)
-(*   module type s = sig *)
-(*   end *)
-
-  (* type ocamlc_compile_flags = .. *)
-  (* type ocamlc_compile_flags += *)
-
-  (* type t = .. *)
-  (* type t += *)
-  (*   | Compile of ocamlc_compile_flags list *)
-(*| Archive of File.Mli.t ocamlc_output *)
-
-  (* let flags_to_spec = List.map ~f:(function *)
-  (*     | O cmi_file -> (Ob.A (Cmi.path cmi_file)) *)
-  (*     | _ -> raise Not_found *)
-  (*   ) *)
-
-  (* let to_spec = function *)
-  (*   | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags) *)
-  (*   | _ -> raise Not_found *)
-
-module Expr_typ () = struct
-  (* Mint new abstract type `a`, this ensures that `t` will not unify with any other type. *)
-  type 'a a
-  type 'a t = 'a a
+    type _ expr +=
+      | I : string * 'a T.t expr -> string T.t expr
+      | End : unit T.t expr
+  end
 end
 
 
-module Ocamlc = struct
-  module T = Expr_typ ()
-
-  type _ expr +=
-    | O : string * 'a T.t expr -> string T.t expr
-    | I : string * 'a T.t expr -> string T.t expr
-    | End : unit T.t expr (* A constructor for an empty tail. Using this value other values can be created. *)
-end
-
-
-module Ocamlopt = struct
-  module T = Expr_typ ()
-
-  type _ expr +=
-    | I : string * 'a T.t expr -> string T.t expr
-    | End : unit T.t expr
-end
-
-
-let make_expr =
+let test =
+  let open Build_ocaml in
   Cmd (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), End)
-           (* Run (Ocamlopt.(Flg (V, End)), *)
-           (*      End)) *)
 
 
 (* type _ expr += *)
