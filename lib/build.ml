@@ -97,8 +97,8 @@ open File
 (*   | Lis : 'hd expr * 'next expr_list -> ('hd * 'next) expr_list *)
 (*   | End : unit expr_list *)
 
-(* module Tool = struct *)
-(*   module type S = sig *)
+(* module tool = struct *)
+(*   module type s = sig *)
 (*   end *)
 
   (* type ocamlc_compile_flags = .. *)
@@ -118,67 +118,47 @@ open File
   (*   | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags) *)
   (*   | _ -> raise Not_found *)
 
-module Tool = struct
-  (* type 'a flag *)
+module Tool_typ () = struct
+  type 'a t
+  type end_t = unit t * unit t
+  type ('typ, 'a) flag = ('typ t * 'a t)
 
-  (* type _ expr += *)
-  (*   | Flg : 'hd flag expr * 'tail flag expr -> ('hd * 'tail) flag expr *)
-  (*   | End : unit flag expr *)
+  type ('typ, 'a, 'b) flg =
+    'typ * ('a, 'b) flag expr
+
+  type _ expr +=
+    | End : end_t expr
 end
+
 
 module Ocamlc = struct
-  (* | O : File.Cmi.t * 'a expr_list -> File.Cmi.t expr *)
-  type 'a t
-  (* type ('a, 'b) tt = ('a t * 'b t) expr *)
-
-  (* type ('typ, 'tail_hd, 'tail_tail, 'tail) flag = *)
-  (*   'typ * ('tail_hd t * 'tail_tail t) expr -> ('typ t * 'tail t) expr *)
-
-
-  type ('typ, 'a) flag = ('typ t * 'a t)
-(* string * ('a t * 'b t) expr -> (string t * 'c t) *)
+  module T = Tool_typ ()
 
   type _ expr +=
-    (* | Flags : 'a * 'b expr -> ('b * t) expr *)
-    (* | O : string * ('a expr) -> (string * ('a expr)) expr *)
-    (* | I : unit list * ('a expr) -> (unit list * ('a expr)) expr *)
-    | O : string * ('a, 'b) flag expr -> (string, 'c) flag expr
-    | I : string * ('a, 'b) flag expr -> (string, 'c) flag expr
-    (* | I : string * ('a t * 'b t) expr -> (string t * 'c t) expr *)
-    (* | I : string * ('a t) expr -> (string * ('a t) expr) t expr *)
-    (* | O : string * ('a * 't) expr -> (string * ('a t expr)) expr *)
-    | End : (unit t * unit t) expr
+    (* | O : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
+    (* | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
+    | O : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
+    | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
+    (* | End : T.end_t expr *)
 end
 
+
 module Ocamlopt = struct
-(* (1*   include Tool *1) *)
+  module T = Tool_typ ()
 
-(*   type 'a flag *)
-(*   type t *)
-
-(*   let flg : 'a -> 'a flag = fun a -> a *)
-
-  type 'a t
   type _ expr +=
-    | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
-
-(*   type _ expr += *)
-(*     | O : string flag * ('a expr) -> (string flag * ('a expr)) expr *)
-(*     (1* | End : t expr *1) *)
-
-(* (1*     | O : File.Mli.t -> File.Mli.t flag expr *1) *)
-(* (1*     | I : string -> string expr *1) *)
-(* (1*     | V : unit expr *1) *)
+    | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
 end
 
 
 let make_expr =
   (* Exec (Ocamlc.(O ("file.out", End)), End) *)
   Exec (
-    Ocamlc.O ("file.out",
-              Ocamlc.I ("p/a/t/h",
-                        Ocamlopt.I ("p/a/t/h",
-                                    Ocamlc.End))),
+    Ocamlc.(O ("file.out",
+               I ("p/a/t/h",
+                         I ("p/a/t/h",
+                                   T.End)))
+           ),
     End)
            (* Run (Ocamlopt.(Flg (V, End)), *)
            (*      End)) *)
