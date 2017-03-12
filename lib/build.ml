@@ -118,36 +118,34 @@ open File
   (*   | Compile flags -> (Ob.A "-c") :: (flags_to_spec flags) *)
   (*   | _ -> raise Not_found *)
 
-module Tool_typ () = struct
-  type 'a t
-  type end_t = unit t * unit t
-  type ('typ, 'a) flag = ('typ t * 'a t)
-
-  type ('typ, 'a, 'b) flg =
-    'typ * ('a, 'b) flag expr
-
-  type _ expr +=
-    | End : end_t expr
+module Expr_typ () = struct
+  (* This mints a new abstract type `a`, making type `t` incompatible with any other type *)
+  type 'a a
+  type ('typ, 'a) t = ('typ a * 'a a)
 end
 
 
 module Ocamlc = struct
-  module T = Tool_typ ()
+  module T = Expr_typ ()
+
+  (* type ('typ, 'a) flag = ('typ t * 'a t) *)
 
   type _ expr +=
     (* | O : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
     (* | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
-    | O : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
-    | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
-    (* | End : T.end_t expr *)
+    | O : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
+    | I : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
+    (* | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr *)
+    | End : (unit, unit) T.t expr
 end
 
 
 module Ocamlopt = struct
-  module T = Tool_typ ()
+  module T = Expr_typ ()
 
   type _ expr +=
-    | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr
+    (* | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr *)
+    | I : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
 end
 
 
@@ -156,7 +154,7 @@ let make_expr =
   Exec (
     Ocamlc.(O ("file.out",
                I ("p/a/t/h",
-                         I ("p/a/t/h",
+                         Ocamlopt.I ("p/a/t/h",
                                    T.End)))
            ),
     End)
