@@ -129,13 +129,22 @@ end
 module Ocamlc = struct
   (* | O : File.Cmi.t * 'a expr_list -> File.Cmi.t expr *)
   type 'a t
+  (* type ('a, 'b) tt = ('a t * 'b t) expr *)
+
+  (* type ('typ, 'tail_hd, 'tail_tail, 'tail) flag = *)
+  (*   'typ * ('tail_hd t * 'tail_tail t) expr -> ('typ t * 'tail t) expr *)
+
+
+  type ('typ, 'a) flag = ('typ t * 'a t)
+(* string * ('a t * 'b t) expr -> (string t * 'c t) *)
+
   type _ expr +=
     (* | Flags : 'a * 'b expr -> ('b * t) expr *)
     (* | O : string * ('a expr) -> (string * ('a expr)) expr *)
     (* | I : unit list * ('a expr) -> (unit list * ('a expr)) expr *)
-    | Flags : 'a t * ('b t) expr -> ('a t * 'b t) expr
-    | O : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
-    | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
+    | O : string * ('a, 'b) flag expr -> (string, 'c) flag expr
+    | I : string * ('a, 'b) flag expr -> (string, 'c) flag expr
+    (* | I : string * ('a t * 'b t) expr -> (string t * 'c t) expr *)
     (* | I : string * ('a t) expr -> (string * ('a t) expr) t expr *)
     (* | O : string * ('a * 't) expr -> (string * ('a t expr)) expr *)
     | End : (unit t * unit t) expr
@@ -168,9 +177,8 @@ let make_expr =
   Exec (
     Ocamlc.O ("file.out",
               Ocamlc.I ("p/a/t/h",
-                        Ocamlc.End)
-
-             ),
+                        Ocamlopt.I ("p/a/t/h",
+                                    Ocamlc.End))),
     End)
            (* Run (Ocamlopt.(Flg (V, End)), *)
            (*      End)) *)
