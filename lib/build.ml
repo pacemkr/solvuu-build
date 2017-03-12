@@ -22,7 +22,7 @@ type _ expr = ..
 
 
 type 'hd exprs =
-  | Run : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
+  | Exec : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
   | End : unit exprs
 
 (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
@@ -127,25 +127,51 @@ module Tool = struct
 end
 
 module Ocamlc = struct
-  include Tool
-
+  (* | O : File.Cmi.t * 'a expr_list -> File.Cmi.t expr *)
+  type 'a t
   type _ expr +=
-    (* | O : File.Cmi.t * 'a expr_list -> File.Cmi.t expr *)
-    | O : string * ('a exprs) -> (string * 'a exprs) expr
-
+    (* | Flags : 'a * 'b expr -> ('b * t) expr *)
+    (* | O : string * ('a expr) -> (string * ('a expr)) expr *)
+    (* | I : unit list * ('a expr) -> (unit list * ('a expr)) expr *)
+    | Flags : 'a t * ('b t) expr -> ('a t * 'b t) expr
+    | O : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
+    | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
+    (* | I : string * ('a t) expr -> (string * ('a t) expr) t expr *)
+    (* | O : string * ('a * 't) expr -> (string * ('a t expr)) expr *)
+    | End : (unit t * unit t) expr
 end
 
-(* module Ocamlopt = struct *)
-(*   include Tool *)
+module Ocamlopt = struct
+(* (1*   include Tool *1) *)
+
+(*   type 'a flag *)
+(*   type t *)
+
+(*   let flg : 'a -> 'a flag = fun a -> a *)
+
+  type 'a t
+  type _ expr +=
+    | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr
 
 (*   type _ expr += *)
-(*     | O : File.Mli.t -> File.Mli.t flag expr *)
-(*     | I : string -> string expr *)
-(*     | V : unit expr *)
-(* end *)
+(*     | O : string flag * ('a expr) -> (string flag * ('a expr)) expr *)
+(*     (1* | End : t expr *1) *)
+
+(* (1*     | O : File.Mli.t -> File.Mli.t flag expr *1) *)
+(* (1*     | I : string -> string expr *1) *)
+(* (1*     | V : unit expr *1) *)
+end
+
 
 let make_expr =
-  Run (Ocamlc.(O ("file.out", End)), End)
+  (* Exec (Ocamlc.(O ("file.out", End)), End) *)
+  Exec (
+    Ocamlc.O ("file.out",
+              Ocamlc.I ("p/a/t/h",
+                        Ocamlc.End)
+
+             ),
+    End)
            (* Run (Ocamlopt.(Flg (V, End)), *)
            (*      End)) *)
 
