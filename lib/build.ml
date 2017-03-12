@@ -22,7 +22,7 @@ type _ expr = ..
 
 
 type 'hd exprs =
-  | Exec : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
+  | Cmd : 'hd expr * 'tail exprs -> ('hd * 'tail) exprs
   | End : unit exprs
 
 (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
@@ -119,24 +119,19 @@ open File
   (*   | _ -> raise Not_found *)
 
 module Expr_typ () = struct
-  (* This mints a new abstract type `a`, making type `t` incompatible with any other type *)
+  (* Mint new abstract type `a`, this ensures that `t` will not unify with any other type. *)
   type 'a a
-  type ('typ, 'a) t = ('typ a * 'a a)
+  type 'a t = 'a a
 end
 
 
 module Ocamlc = struct
   module T = Expr_typ ()
 
-  (* type ('typ, 'a) flag = ('typ t * 'a t) *)
-
   type _ expr +=
-    (* | O : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
-    (* | I : string * ('a t * 'b t) expr -> (string t * ('a t)) expr *)
-    | O : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
-    | I : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
-    (* | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr *)
-    | End : (unit, unit) T.t expr
+    | O : string * 'a T.t expr -> string T.t expr
+    | I : string * 'a T.t expr -> string T.t expr
+    | End : unit T.t expr (* A constructor for an empty tail. Using this value other values can be created. *)
 end
 
 
@@ -144,20 +139,13 @@ module Ocamlopt = struct
   module T = Expr_typ ()
 
   type _ expr +=
-    (* | I : (string, 'a, 'b) T.flg -> (string, 'c) T.flag expr *)
-    | I : string * ('a, 'b) T.t expr -> (string, 'c) T.t expr
+    | I : string * 'a T.t expr -> string T.t expr
+    | End : unit T.t expr
 end
 
 
 let make_expr =
-  (* Exec (Ocamlc.(O ("file.out", End)), End) *)
-  Exec (
-    Ocamlc.(O ("file.out",
-               I ("p/a/t/h",
-                         Ocamlopt.I ("p/a/t/h",
-                                   T.End)))
-           ),
-    End)
+  Cmd (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), End)
            (* Run (Ocamlopt.(Flg (V, End)), *)
            (*      End)) *)
 
