@@ -12,41 +12,93 @@ open Util.Filename
  *
  *)
 
-
+(* Minimal tools and example to make creation of domain specific languages simpler.
+ * Expressions and their relationships are defined by extending a single GADT type.
+ **)
 module Dsl = struct
+  (* Extensible expression vocabulary. *)
   type _ expr = ..
 
-
-  module Expr_typ () = struct
-    (* Mint new abstract type `a`, this ensures that `t` will not unify with any other type. *)
+  (* Non-unifying type minter. *)
+  module Typ () = struct
     type 'a a
     type 'a t = 'a a
   end
 
+  (* Usage example, also bootsraps the language. *)
 
-  type 'a exprs =
-    | Cmd : 'a expr * 'b exprs -> ('a * 'b) exprs
-    | End : unit exprs
+  (* Define new type *)
+  module Lang = Typ ()
 
-  (* type cmds = Existential_cmds : 'cmds cmd -> cmds *)
+  (* Define the root expression.
+   * Everything else in the language is namespaced using modules. *)
+  type _ expr += Exec : 'a Lang.t expr -> 'a Lang.t expr
 
+  (* Std lib, ye normal list goes far. *)
+  module Std = struct
+    (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
+    type _ expr +=
+    | Lis : 'a * 'b Lang.t expr -> ('a * 'b Lang.t) expr
+    | End : unit Lang.t expr
+  end
 
-  type ('a, 'b, 'c) rule = {
-    deps : 'a list;
-    prods : 'b list;
-    exprs : 'c exprs;
-  }
-
-
-  type _ expr +=
-    | Rule : 'a * 'b * 'c -> ('a, 'b, 'c) rule expr
+  (* Executor, rec funs for funs.
+   *
+   * Everything in the language is implemented using extensions,
+   * which are nothing more than function matching on an expression.
+   * *)
+  let rec exec extend = function
+    | Exec expr -> exec extend expr
+    | expr -> extend expr
 end
 
 
+module Build = struct
+  include Dsl
+
+  type _ expr +=
+    | Rule : 'a * 'b * 'c expr -> ('a * 'b * 'c) expr
+
+  (* let install_rules rules = *)
+  (*   Ocamlbuild_plugin.dispatch @@ function *)
+  (*   | Ocamlbuild_plugin.After_rules -> ( *)
+
+  (*       Ocamlbuild_plugin.clear_rules(); *)
+
+  (*       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |> *)
+  (*       List.iter ~f:(fun {deps; prods; cmds} -> *)
+  (*           Rule.rule ~deps ~prods (fun _ _ -> *)
+
+
+  (*               (1* get tool from cmd variant *1) *)
+
+
+  (*               List.map cmds ~f:(function *)
+  (*                   | (t : cmd) -> Tool.to_spec t *)
+
+  (*                   (1* | a -> a *1) *)
+  (*                 ) *)
+  (*             ) *)
+  (*         ) *)
+  (*     ) *)
+  (*   | _ -> () *)
+
+
+  (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
+  (*       Use a graph to keep track of circular dependecies at each recursion. *)
+  (* let rec build *)
+  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
+  (*     ?(init=[]) *)
+  (*     ~f *)
+  (*     deps *)
+  (*   = *)
+  (*   if (is_target deps) then deps *)
+  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
+end
 
 
 module Build_ocaml = struct
-  include Dsl
+  include Build
 
   (* This mostly mints new types for each file type,
    * to prevent accidentally mixing up input formats for tools. *)
@@ -92,7 +144,7 @@ module Build_ocaml = struct
   end
 
   module Ocamlc = struct
-    module T = Expr_typ ()
+    module T = Typ ()
 
     type _ expr +=
       | O : string * 'a T.t expr -> string T.t expr
@@ -101,301 +153,65 @@ module Build_ocaml = struct
   end
 
   module Ocamlopt = struct
-    module T = Expr_typ ()
+    module T = Typ ()
 
     type _ expr +=
       | I : string * 'a T.t expr -> string T.t expr
       | End : unit T.t expr
+  end
+
+  module Artifact = struct
+    module T = Typ ()
+
+    type _ expr +=
+      | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
   end
 end
 
 
 let test =
   let open Build_ocaml in
-  Cmd (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), End)
+  Std.Lis (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), Std.End)
 
 
-(* type _ expr += *)
-  (* | Ocamlc : 'a Ocamlc.flags -> 'a Ocamlc.flags expr *)
-
-
-(* type _ artifact += *)
-(*   | Compiled_interface : (Mli.t, Cmi.t, 'a) rule -> (File.Mli.t, File.Cmi.t, 'a) rule artifact *)
-
-
-(* let cmd_to_spec : type a . a cmd -> Ob.spec list = function *)
-(*   | Ocamlc t -> (Ob.A "ocamlc") :: (Ocamlc.to_spec t) *)
-(*   | _ -> raise Not_found *)
-
-
-(* let rec cmds_to_spec : type a . a cmds -> Ob.Command.t list = function *)
-(*   | Run (cmd, next) -> (Ob.Cmd (Ob.S (cmd_to_spec cmd))) ::  (cmds_to_spec next) *)
-(*   | End -> [] *)
-
-
-(* let compile_mli mli_file = *)
-(*   let open File in *)
 (*   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in *)
-(*   Compiled_interface { *)
-(*     deps = [mli_file]; *)
-(*     prods = [cmi_file]; *)
-(*     (1* exprs = (Run (Ocamlc Ocamlc.(Compile ((O cmi_file) :: ocamlc_flags)), End)); *1) *)
-(*     exprs = ( *)
-(*       Run (Ocamlc.(Flg (Ocamlopt.V, End)), End) *)
-(*            (1* Run (Ocamlopt.(Flg (V, End)), *1) *)
-(*            (1*      End)) *1) *)
-(*     ); *)
-(*   } *)
+
+(* let to_command spec files = *)
+(*   let open Util.Spec in *)
+(*   [[Some (A "ocamlfind"); Some (A "ocamlc")]] *)
+(*   @[[Some (A "-verbose")]] *)
+(*   @spec *)
+(*   @[List.map files ~f:(fun file -> Some (A file))] *)
+(*   |> specs_to_command *)
 
 
-
-(* let to_cmd extend lookup expr = function *)
-(*   | unknown_expr -> lookup unknown_expr *)
-
-
-
-
-(* module Custom_tools = Ocaml_tools.Make(struct *)
-(*     module Ocamlc = Ocamlc.Make( *)
-(*   end) *)
-
-
-(* module Build_ocamlfuse = Build.Make(struct *)
-(*   module Ocamlc = struct *)
-(*     include Ocaml_tools.Ocamlc *)
-
-(*     type flags += V *)
-
-(*     let to_spec = function *)
-(*       | V -> *)
-(*       | a -> Ocamlc.to_spec(a) *)
-(*   end *)
-(* end) *)
+(* let ls_dir dir = *)
+(*   let open File in *)
+(*   let all_files = *)
+(*     try Sys.readdir dir |> Array.to_list *)
+(*     with _ -> [] *)
+(*   in *)
+(*   List.filter_map all_files ~f:(fun path -> *)
+(*       match extension path with *)
+(*       | ".mli" -> Some (Intf (Mli.of_path (dir ^ "/" ^ path))) *)
+(*       (1* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *1) *)
+(*       | _ -> None *)
+(*     ) *)
 
 
-(* type ocamlc_flag = .. *)
-(* type ocamlc_flag += *)
-(*   | Mlc_o of string *)
-
-(* type ocamlc_expr = ocamlc_flag list *)
-
-(* type _ expr = .. *)
-(* type _ expr = *)
-(*   (1* | Unit : spec list expr *1) *)
-(*   (1* | String : (string * (string -> spec list)) expr *1) *)
-(*   (1* | String_list : (string list * (string list -> spec list)) expr *1) *)
-(*   (1* | Set_o : string -> 'a list expr *1) *)
-(*   (1* | Set_c : string -> 'b list expr *1) *)
-(*   | Ocamlc : ocamlc_expr -> ocamlc_expr expr *)
-
-
-(* let rec expr_to_cmd : type a b . a expr -> b expr = *)
-(*   match expr with *)
-(*   | Ocamlc flags -> expr_to_cmd flags *)
-  (* | Set_o string -> *)
-  (* | other -> expr_to_cmd (extend other) *)
-
-(* type cmd = .. *)
-(* type cmd += *)
-(*   | Ocamlc of Ocamlc.t *)
-(*   | Ocamlfind_ocamlc of Ocamlfind.Ocamlc.t *)
-
-
-(* type tool = cmd ToolList.t *)
+  (* let open Ocamlfind in *)
+  (* let create (module Common : Ocamlx) = *)
+  (*   Common.( *)
+  (*     create () |> *)
+  (*     set_verbose |> *)
+  (*     set_package ~v:findlib_deps |> *)
+  (*     set_pathI ~v:[dir] *)
+  (*   ) *)
+  (* in *)
+  (* let ocamlc = create (module Ocamlc) in *)
+  (* let ocamlopt = create (module Ocamlopt) in *)
 
 (*
-type rule = {
-  deps : string list;
-  prods : string list;
-  (* spec : expr; *)
-}
-
-
-type artifact = ..
-type artifact +=
-  | Intf of File.Mli.t
-  | Compiled_intf of rule * File.Cmi.t
-  | Rule of rule
-
-
-let is_rule = function Rule _ -> true | _ -> false
-
-
-let to_command spec files =
-  let open Util.Spec in
-  [[Some (A "ocamlfind"); Some (A "ocamlc")]]
-  @[[Some (A "-verbose")]]
-  @spec
-  @[List.map files ~f:(fun file -> Some (A file))]
-  |> specs_to_command
-
-
-let ls_dir dir =
-  let open File in
-  let all_files =
-    try Sys.readdir dir |> Array.to_list
-    with _ -> []
-  in
-  List.filter_map all_files ~f:(fun path ->
-      match extension path with
-      | ".mli" -> Some (Intf (Mli.of_path (dir ^ "/" ^ path)))
-      (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
-      | _ -> None
-    )
-
-
-let compile_mli ~ocamlc mli_file =
-  let open File in
-  let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
-  let cmi_path = Cmi.path cmi_file in
-  let mli_path = Mli.path mli_file in
-  let cmds = [
-    (Ocamlcc [(Mlc_o cmi_path)])
-
-    (* Ocamlfind_ocamlc Ocamlfind.Ocamlc.( *)
-    (*     set_o ocamlc ~v:cmi_path *)
-    (*   ); *)
-  ] in
-  Compiled_intf ({
-      deps = [mli_path];
-      prods = [cmi_path];
-      spec;
-    }, cmi_file)
-
-
-(* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
-(*       Use a graph to keep track of circular dependecies at each recursion. *)
-let rec build
-    ?(is_target=(List.for_all ~f:is_rule))
-    ?(init=[])
-    ~f
-    deps
-  =
-  if (is_target deps) then deps
-  else build ~is_target ~f (List.fold_left ~init ~f deps)
-
-
-let install_rules rules =
-  Ocamlbuild_plugin.dispatch @@ function
-  | Ocamlbuild_plugin.After_rules -> (
-
-      Ocamlbuild_plugin.clear_rules();
-
-      List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |>
-      List.iter ~f:(fun {deps; prods; cmds} ->
-          Rule.rule ~deps ~prods (fun _ _ ->
-
-
-              (* get tool from cmd variant *)
-
-
-              List.map cmds ~f:(function
-                  | (t : cmd) -> Tool.to_spec t
-
-                  (* | a -> a *)
-                )
-            )
-        )
-    )
-  | _ -> ()
-
-
-let build_lib ~dir ~findlib_deps artifact =
-  let open Ocamlfind in
-  let create (module Common : Ocamlx) =
-    Common.(
-      create () |>
-      set_verbose |>
-      set_package ~v:findlib_deps |>
-      set_pathI ~v:[dir]
-    )
-  in
-  let ocamlc = create (module Ocamlc) in
-  (* let ocamlopt = create (module Ocamlopt) in *)
-  match artifact with
-  (* | `Src _ -> dep *)
-  | Intf mli_file -> (compile_mli ~ocamlc mli_file) (* <- list of prods *)
-  | Compiled_intf (rule, _) -> (Rule rule)
-  (* | Rule {deps; prods; cmds} -> *)
-  (*   Rule.rule ~deps ~prods (fun _ _ -> *)
-  (*       List.map cmds ~f:(function *)
-  (*           | tool : Tool as t -> Tool.to_spec t *)
-  (*           | a -> a *)
-  (*         ) *)
-  (*     ) *)
-  | a -> a
-
-
-let lib prods dep =
-  (
-    build_lib dep |>
-    pathI_for_cmi
-  )
-  :: prods
-
-
-let b =
-
-    ls_dir "lib" |>
-    (* build ~f:lib |> *)
-    build ~f:(fun prods dep ->
-
-        (
-          build_lib dep |>
-          function
-          | (_,
-          Build.eval (Ocamlc Set_verbose)
-          (* (function *)
-          (*   | Compiled_intf (_, rule) -> *)
-          (*     set_flag Ocamlc "-thread" *)
-          (* ) *)
-        )
-        :: prods
-
-      ) |>
-    (* flag Ocamlc "-thread" |> *)
-    install_rules
-
-
-
-
-(* let re build ?next ~step ~deps = *)
-(*   let prods = List.fold_left ~f:step ~init:[] deps in *)
-(*   let prods = match next with *)
-(*   | Some next -> (List.fold_left ~f:next ~init:[] prods) @ prods *)
-(*   | None -> prods *)
-(*   in *)
-(*   if list.for_all ~f:is_rule prods then prods *)
-(*   else build ?next ~step ~deps:prods *)
-
-(* let (|>>) deps next_build_step = *)
-
-
-
-(* let lib ~dir = *)
-(*   Ocamlbuild_plugin.dispatch @@ function *)
-(*   | Ocamlbuild_plugin.After_rules -> ( *)
-(*       Ocamlbuild_plugin.clear_rules(); *)
-
-(*       ls_dir dir |> *)
-
-(*       build ~f:(fun prods dep -> *)
-(*           ( *)
-(*             build_lib dep |> *)
-(*             pathI_for_cmi *)
-(*           ) *)
-(*           :: prods *)
-(*         ) *)
-(*       |> install_rules *)
-
-(*     ) *)
-(*   | _ -> () *)
-
-
-(* Compile module takes prods to deps.
- * Thats a generalization on the entire Build process... *)
-(* Thats what ocamlbuild does itself
- *
  * So....
  *
  * Add ability to specify extra constraints on top of ocamlbuild commands.
@@ -409,9 +225,8 @@ let b =
  *                         What are the steps and opts required to the toolchain.
  *  - This is effectively what you are describing with Ocaml build, hence the tags thing probably.
  *
- *
  * *)
-(*
+    (*
 module Ocamlc = struct
 
   type t = {
@@ -504,8 +319,6 @@ module Ocamlc = struct
   (*   ); *)
 end
 
-
-(* Mint new type for each file type to prevent problems *)
 
 (* Can use one or a combination of tools *)
 (* Pass file to Tool for command generation. *)
@@ -649,43 +462,9 @@ module BuildLib = struct
 
         File.ls_dir ~dir |>
         deps_of_files |>
-        (* ocamldep_sort |> (1* Can be file sort *1) *)
+        (* ocamldep_sort |> *)
         build t
       )
     | _ -> ()
-
-
-
-    (* let compile = List.map mli_files ~f:(fun file -> Compile.mli_file *)
-    (*                          ?thread *)
-    (*                          ~package *)
-    (*                          ~pathI *)
-    (*                          ~internal_deps:cmi_internal_deps *)
-    (*                          (File.create File.Mli file) *)
-    (*                       ) in *)
-
-    (* List.iter ~f:Compile.install_rules built_cmi; *)
-
-
-
-    (* For each input file execute some command. *)
-    (* Or, for a list of input files, execute commands. *)
-
-    (* Work backwards through unit deps *)
-    (* Lib < cma *)
-    (*     < [name].a/.so *)
-    (*     < cmo list *)
-    (*     < ml *)
-    (*     < mli *)
-
-
-    (* build mli files *)
-    (* build ml files *)
 end
-   *)
-
-
-(* Ocamlc.with_new_opt : experimental_opts -> M : Ocamlc *)
-
-(* module CompileBytecode = BuildWith(Ocamlc) *)
-   *)
+       *)
