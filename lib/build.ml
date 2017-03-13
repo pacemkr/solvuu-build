@@ -32,24 +32,39 @@ module Dsl = struct
 
   (* Define the root expression.
    * Everything else in the language is namespaced using modules. *)
-  type _ expr += Exec : 'a Lang.t expr -> 'a Lang.t expr
+  (* type _ expr += Exec : ('a * 'b Lang.t) expr -> ('a * 'b Lang.t) expr *)
 
+  type ('a, 'b) boot = ('a expr -> 'b) * 'a expr
   (* Std lib, ye normal list goes far. *)
-  module Std = struct
+  (* module Std = struct *)
     (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
-    type _ expr +=
-    | Lis : 'a * 'b Lang.t expr -> ('a * 'b Lang.t) expr
-    | End : unit Lang.t expr
-  end
+  type eexpr = Eexpr : 'a expr -> eexpr
+
+  type _ exprs =
+  | Expr : eexpr * 'b exprs -> (eexpr * 'b exprs) exprs
+  | Exit : unit exprs
+  (* end *)
+
+  (* let rec exec kern expr = *)
+
+  (* let exec = function *)
+  (*   | Exec (kern, expr) -> kern expr *)
+  (*   | _ -> raise Not_found *)
 
   (* Executor, rec funs for funs.
    *
    * Everything in the language is implemented using extensions,
    * which are nothing more than function matching on an expression.
    * *)
-  let rec exec extend = function
-    | Exec expr -> exec extend expr
-    | expr -> extend expr
+  let rec exec : type a b .
+    (eexpr -> a) -> b exprs -> unit
+    =
+    fun kern exprs ->
+      match exprs with
+      | Expr (expr, exprs) ->
+        ignore (kern expr);
+        ignore (exec kern exprs)
+      | Exit -> ()
 end
 
 
@@ -149,6 +164,7 @@ module Build_ocaml = struct
     type _ expr +=
       | O : string * 'a T.t expr -> string T.t expr
       | I : string * 'a T.t expr -> string T.t expr
+      | Version : 'a T.t expr -> unit T.t expr
       | End : unit T.t expr (* Empty tail constructor. *)
   end
 
@@ -169,9 +185,10 @@ module Build_ocaml = struct
 end
 
 
-let test =
-  let open Build_ocaml in
-  Std.Lis (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), Std.End)
+(* let test = *)
+(*   let open Build_ocaml in *)
+(*   let expr = Exec (Std.Expr (Ocamlc.(Version End),Std.End)) in *)
+(*   Std.Expr (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), Std.End) *)
 
 
 (*   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in *)
