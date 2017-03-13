@@ -34,22 +34,14 @@ module Dsl = struct
    * Everything else in the language is namespaced using modules. *)
   (* type _ expr += Exec : ('a * 'b Lang.t) expr -> ('a * 'b Lang.t) expr *)
 
-  type ('a, 'b) boot = ('a expr -> 'b) * 'a expr
-  (* Std lib, ye normal list goes far. *)
-  (* module Std = struct *)
-    (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
+  (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
+
+  (* type ('a, 'b) boot = ('a expr -> 'b) * 'a expr *)
   type eexpr = Eexpr : 'a expr -> eexpr
 
   type _ exprs =
   | Expr : eexpr * 'b exprs -> (eexpr * 'b exprs) exprs
   | Exit : unit exprs
-  (* end *)
-
-  (* let rec exec kern expr = *)
-
-  (* let exec = function *)
-  (*   | Exec (kern, expr) -> kern expr *)
-  (*   | _ -> raise Not_found *)
 
   (* Executor, rec funs for funs.
    *
