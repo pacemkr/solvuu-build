@@ -69,7 +69,7 @@ module Dsl = struct
   (*   | Eexpr (Time as b) -> kern b *)
   (*   | _ -> raise Not_found *)
 
-  (* type eexpr = Expr : 'a expr -> eexpr *)
+  type eexpr = Expr : 'a expr -> eexpr
 
   (* Core expressions. *)
   (* type _ exprs = *)
@@ -96,19 +96,35 @@ module Dsl = struct
 
   module Variant3 = struct
     type _ expr +=
-      | X : ('a expr -> 'b expr) * 'a expr -> (('a expr -> 'b expr) * 'c expr) expr
+      | X : ('a expr -> (eexpr -> ret) -> ret) * 'a expr -> 'b expr
 
-    let rec eval : type a b.
-      a expr -> b expr
+    let rec eval :
+      eexpr -> ret
       = function
-      | X (kernel, exprs) -> eval (kernel exprs)
-      | _ -> raise Not_found
+      | Expr expr ->
+         begin match expr with
+         | X (kernel, exprs) -> Ret (kernel exprs eval)
+         | _ -> raise Not_found
+         end
+      (* | _ -> raise Not_found *)
 
-    (* let rec ocamlc : type a . a expr -> eexpr *)
+    let rec ocamlc : type a.
+      a expr -> (eexpr -> spec list) -> ret
+      =
+      fun expr eval ->
+      match expr with
+      | O (s, rest) -> Ret (A ("-o " ^ s) :: (match eval (Expr rest) with Ret r -> r))
+      | End -> Ret []
+      | a -> eval (Expr a)
+
+    (* let rec ocamlcI : type a . a expr -> spec list *)
     (*   = function *)
-    (*   | O (s, rest) -> Expr (Lis (A ("-o " ^ s), ocamlc rest)) *)
-    (*   | e -> Expr e *)
+    (*   | O (s, rest) -> A ("-o " ^ s) :: ocamlc rest *)
+    (*   | End -> [] *)
+    (*   | _ -> raise Not_found *)
 
+    let main =
+      Expr (X (ocamlc, O ("test.out", End)))
     (* let kern1 = function *)
     (*   | Expr (Ocamlc expr) -> ocamlc expr *)
     (*   | es -> es *)
