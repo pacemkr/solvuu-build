@@ -57,6 +57,47 @@ module Dsl = struct
         ignore (kern expr);
         ignore (exec kern exprs)
       | Exit -> ()
+
+
+  (* Sample extension *)
+  type _ expr +=
+    | Time : unit expr
+
+  let kern = function
+    | Time -> print_endline ("TIME IS:" ^ (string_of_float (Sys.time ())))
+    | _ -> raise Not_found
+
+  let kern2 = function
+    | Eexpr (Time as b) -> kern b
+    | _ -> raise Not_found
+
+  type _ expr +=
+    | Exec : 'a expr -> unit expr
+
+  module T = Typ ()
+  type _ expr +=
+    | Ocamlc : 'a T.t expr -> 'a T.t expr
+    | O : string * 'a T.t expr -> string T.t expr
+    | I : string * 'a T.t expr -> string T.t expr
+    | Version : 'a T.t expr -> unit T.t expr
+    | End : unit T.t expr (* Empty tail constructor. *)
+
+  open Ocamlbuild_plugin
+
+  let rec to_spec : type a . a expr -> spec list
+    = function
+    | Exec (Ocamlc expr) -> to_spec expr
+    | O (s, rest) -> (A ("-o " ^ s)) :: to_spec rest
+    | _ -> raise Not_found
+
+
+
+  let main =
+    exec kern2 (Expr (Eexpr Time, Exit))
+    (* exec kern (Expr (Eexpr Time, Exit)) *)
+
+
+
 end
 
 
