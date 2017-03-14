@@ -37,46 +37,56 @@ module Dsl = struct
   (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
 
   (* type ('a, 'b) boot = ('a expr -> 'b) * 'a expr *)
-  type eexpr = Eexpr : 'a expr -> eexpr
+  (* type eexpr = Eexpr : 'a expr -> eexpr *)
 
-  type _ exprs =
-  | Expr : eexpr * 'b exprs -> (eexpr * 'b exprs) exprs
-  | Exit : unit exprs
+  (* type _ exprs = *)
+  (* | Expr : eexpr * 'b exprs -> (eexpr * 'b exprs) exprs *)
+  (* | Exit : unit exprs *)
 
   (* Executor, rec funs for funs.
    *
    * Everything in the language is implemented using extensions,
    * which are nothing more than function matching on an expression.
    * *)
-  let rec exec : type a b .
-    (eexpr -> a) -> b exprs -> unit
-    =
-    fun kern exprs ->
-      match exprs with
-      | Expr (expr, exprs) ->
-        ignore (kern expr);
-        ignore (exec kern exprs)
-      | Exit -> ()
+  (* let rec exec : type a b . *)
+  (*   (eexpr -> a) -> b exprs -> unit *)
+  (*   = *)
+  (*   fun kern exprs -> *)
+  (*     match exprs with *)
+  (*     | Expr (expr, exprs) -> *)
+  (*       ignore (kern expr); *)
+  (*       ignore (exec kern exprs) *)
+  (*     | Exit -> () *)
 
 
   (* Sample extension *)
+
+  (* let kern = function *)
+  (*   | Time -> print_endline ("TIME IS:" ^ (string_of_float (Sys.time ()))) *)
+  (*   | _ -> raise Not_found *)
+
+  (* let kern2 = function *)
+  (*   | Eexpr (Time as b) -> kern b *)
+  (*   | _ -> raise Not_found *)
+
+  (* type eexpr = Expr : 'a expr -> eexpr *)
+
+  (* Core expressions. *)
+  (* type _ exprs = *)
+  (*   (1* | Exec : 'a expr -> unit expr *1) *)
+  (*   | Exec : eexpr * 'b exprs -> ('a expr * 'b exprs) exprs *)
+  (*   | Exit : unit exprs *)
+
+  type ret = Ret : 'a -> ret
+
   type _ expr +=
-    | Time : unit expr
-
-  let kern = function
-    | Time -> print_endline ("TIME IS:" ^ (string_of_float (Sys.time ())))
-    | _ -> raise Not_found
-
-  let kern2 = function
-    | Eexpr (Time as b) -> kern b
-    | _ -> raise Not_found
-
-  type _ expr +=
-    | Exec : 'a expr -> unit expr
+    (* | Expr : 'a expr -> eexpr expr *)
+    | Exit : unit expr
+    (* | Ret : 'a -> unit expr *)
 
   module T = Typ ()
   type _ expr +=
-    | Ocamlc : 'a T.t expr -> 'a T.t expr
+    (* | Ocamlc : 'a T.t expr -> 'a T.t expr *)
     | O : string * 'a T.t expr -> string T.t expr
     | I : string * 'a T.t expr -> string T.t expr
     | Version : 'a T.t expr -> unit T.t expr
@@ -84,18 +94,47 @@ module Dsl = struct
 
   open Ocamlbuild_plugin
 
-  let rec to_spec : type a . a expr -> spec list
+  (* let eval ~kern = *)
+  (*   List.fold_left ~init:End *)
+
+  let rec eval : type a b . a expr -> (a expr -> b) -> ret
+    = fun expr kern ->
+      match expr with
+      (* | Exit -> Ret 0 *)
+      | a -> Ret (kern a)
+
+  (* let rec exec : type a b . *)
+  (*   (b expr -> a) -> b exprs -> unit *)
+  (*   = *)
+  (*   fun kern exprs -> *)
+  (*     match exprs with *)
+  (*     | Exec (expr, exprs) -> *)
+  (*       ignore (kern expr); *)
+  (*       ignore (exec kern exprs) *)
+  (*     | Exit -> () *)
+  (*     | a -> kern a *)
+
+  let rec to_spec : type a . a T.t expr -> spec list
     = function
-    | Exec (Ocamlc expr) -> to_spec expr
+    (* | Ocamlc expr -> to_spec expr *)
     | O (s, rest) -> (A ("-o " ^ s)) :: to_spec rest
     | _ -> raise Not_found
 
-
+  (* let extend = function *)
+  (*   | O (s, rest) -> (A ("-I " ^ s)) :: extend rest *)
 
   let main =
-    exec kern2 (Expr (Eexpr Time, Exit))
+    eval (O ("test.out", End)) to_spec
     (* exec kern (Expr (Eexpr Time, Exit)) *)
 
+  (* let rec build *)
+  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
+  (*     ?(init=[]) *)
+  (*     ~f *)
+  (*     deps *)
+  (*   = *)
+  (*   if (is_target deps) then deps *)
+  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
 
 
 end
