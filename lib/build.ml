@@ -131,14 +131,16 @@ module Dsl = struct
 
   (* end *)
 
-  (* An Ocaml unix, get it??? *)
-  module Onix = struct
+  (* An... Onix, get it??? *)
+  module Kern = struct
 
     type eexpr = Expr : 'a expr -> eexpr
 
+    type 'a proc = (eexpr -> 'a) -> eexpr -> 'a
+
     type _ expr +=
-      | X : ((eexpr -> 'a) -> 'b expr -> 'a) * 'b expr * 'c expr -> (('a expr -> 'b expr) * 'a expr * 'c expr) expr
-      | Ret : ret expr
+      | Exec : 'a proc * 'b expr * 'c expr -> 'b expr
+      | Exit : ret expr
 
     (* let rec eval : type a . *)
     (*   (eexpr -> spec list) -> a expr -> spec list *)
@@ -170,22 +172,23 @@ module Dsl = struct
       =
       fun eval -> function Expr expr ->
         begin match expr with
-          | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval rest
+          | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval (Expr rest)
           | End -> []
           | expr -> eval (Expr expr)
         end
 
 
-    let rec extension : type a .
-      (eexpr -> spec list) -> a expr -> spec list
+    let rec extension
       =
-      fun eval -> function
-      | I (s, rest) -> A ("-I " ^ s) :: extension eval rest
-      | expr -> eval (Expr expr)
+      fun eval -> function Expr expr ->
+        begin match expr with
+          | I (s, rest) -> A ("-I " ^ s) :: extension eval (Expr rest)
+          | expr -> eval (Expr expr)
+        end
 
 
     let dsl_main =
-      X (ocamlc, O ("test.out", X (extension, I ("inc/path", End), Ret)), Ret)
+      Exec (ocamlc, O ("test.out", Exec (extension, I ("inc/path", End), Exit)), Exit)
   end
 
 
