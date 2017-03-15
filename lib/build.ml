@@ -94,76 +94,87 @@ module Dsl = struct
 
   open Ocamlbuild_plugin
 
-  module Variant3 = struct
-    type _ expr +=
-      | X : ('a expr -> (eexpr -> ret) -> ret) * 'a expr -> 'b expr
-
-    let rec eval :
-      eexpr -> ret
-      = function
-      | Expr expr ->
-         begin match expr with
-         | X (kernel, exprs) -> Ret (kernel exprs eval)
-         | _ -> raise Not_found
-         end
-      (* | _ -> raise Not_found *)
-
-    let rec ocamlc : type a.
-      a expr -> (eexpr -> spec list) -> ret
-      =
-      fun expr eval ->
-      match expr with
-      | O (s, rest) -> Ret (A ("-o " ^ s) :: (match eval (Expr rest) with Ret r -> r))
-      | End -> Ret []
-      | a -> eval (Expr a)
-
-    (* let rec ocamlcI : type a . a expr -> spec list *)
-    (*   = function *)
-    (*   | O (s, rest) -> A ("-o " ^ s) :: ocamlc rest *)
-    (*   | End -> [] *)
-    (*   | _ -> raise Not_found *)
-
-    let main =
-      Expr (X (ocamlc, O ("test.out", End)))
-    (* let kern1 = function *)
-    (*   | Expr (Ocamlc expr) -> ocamlc expr *)
-    (*   | es -> es *)
-
-  end
-
-  (* module Variant2 = struct *)
-
-  (*   type eexpr = Expr : 'a expr -> eexpr *)
-
-  (*   type _ kerns = *)
-  (*     | Kern : ('a expr -> 'b expr) * ('b expr -> 'c expr) kerns -> (('a expr -> 'b expr) * ('b expr -> 'c expr)) kerns *)
-  (*     | End : unit kerns *)
-
-  (*   let rec eval : type a. *)
-  (*     a kerns -> eexpr -> eexpr *)
-  (*     = *)
-  (*     fun kerns exprs -> *)
-  (*       match exprs with Expr e -> *)
-  (*       begin *)
-  (*         match kerns with *)
-  (*         | Kern (k, ks) -> *)
-  (*           eval ks (k e) *)
-  (*         | End -> exprs *)
-  (*       end *)
-
+  (* module Variant3 = struct *)
   (*   type _ expr += *)
-  (*     | Lis : 'a * 'b expr -> 'a expr *)
-  (*     (1* List.fold_left ~init:(Ret 0) *1) *)
+  (*     | X : ('a expr -> (eexpr -> ret) -> ret) * 'a expr -> 'b expr *)
 
-  (*   let rec ocamlc : type a b . a expr -> eexpr *)
+  (*   let rec eval : *)
+  (*     eexpr -> ret *)
   (*     = function *)
-  (*     | O (s, rest) -> Lis (A ("-o " ^ s), ocamlc rest) *)
-  (*     | e -> e *)
+  (*     | Expr expr -> *)
+  (*        begin match expr with *)
+  (*        | X (kernel, exprs) -> Ret (kernel exprs eval) *)
+  (*        | _ -> raise Not_found *)
+  (*        end *)
+  (*     (1* | _ -> raise Not_found *1) *)
 
-  (*   let kern1 = function *)
-  (*     | Expr (Ocamlc expr) -> Expr (ocamlc expr) *)
-  (*     | es -> es *)
+  (*   let rec ocamlc : type a. *)
+  (*     a expr -> (eexpr -> spec list) -> ret *)
+  (*     = *)
+  (*     fun expr eval -> *)
+  (*     match expr with *)
+  (*     | O (s, rest) -> Ret (A ("-o " ^ s) :: (match eval (Expr rest) with Ret r -> r)) *)
+  (*     | End -> Ret [] *)
+  (*     | a -> eval (Expr a) *)
+
+  (*   (1* let rec ocamlcI : type a . a expr -> spec list *1) *)
+  (*   (1*   = function *1) *)
+  (*   (1*   | O (s, rest) -> A ("-o " ^ s) :: ocamlc rest *1) *)
+  (*   (1*   | End -> [] *1) *)
+  (*   (1*   | _ -> raise Not_found *1) *)
+
+  (*   let main = *)
+  (*     Expr (X (ocamlc, O ("test.out", End))) *)
+  (*   (1* let kern1 = function *1) *)
+  (*   (1*   | Expr (Ocamlc expr) -> ocamlc expr *1) *)
+  (*   (1*   | es -> es *1) *)
+
   (* end *)
+
+  (* An Ocaml unix, get it??? *)
+  module Onix = struct
+
+    type eexpr = Fun : 'a expr -> eexpr
+
+    (* type proc = *)
+
+    type _ expr +=
+      | Exec : ('a expr -> 'b expr) * 'a expr -> (('a expr -> 'b expr) * 'a expr) expr
+      | Ret : ret expr
+
+    let rec kern : type a b .
+      a expr -> b expr
+      =
+      fun expr ->
+        begin match expr with
+          | Exec (proc, expr) -> kern (proc expr)
+          (* | Ret as r -> *)
+          | _ -> raise Not_found
+        end
+
+    (* type _ kern = *)
+    (*   | Proc : 'a expr -> sh expr *)
+
+    (* let rec eval : type a b . *)
+    (*   a expr -> b sh -> ret *)
+    (*   = *)
+    (*   fun exprs -> function *)
+    (*     | Pipe (from, to_) -> eval (from exprs) to_ *)
+    (*     | End -> exprs *)
+
+    (* type _ expr += *)
+    (*   | Lis : 'a * 'b expr -> 'a expr *)
+      (* List.fold_left ~init:(Ret 0) *)
+
+    let rec ocamlc : type a b . a expr -> b expr
+      = function
+      | O (s, rest) -> Lis (A ("-o " ^ s), ocamlc rest)
+      | e -> e
+
+    let main = function
+      | Exec (Ocamlc expr) -> Expr (ocamlc expr)
+      | es -> es
+  end
 
 
   (* module Variant1 = struct *)
