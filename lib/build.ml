@@ -133,60 +133,11 @@ module Dsl = struct
 
   (* An... Onix, get it??? *)
   module Kern = struct
-
     type eexpr = Expr : 'a expr -> eexpr
 
-    (* type 'a proc = (eexpr -> 'a) -> eexpr -> 'a *)
-
-    (* type _ expr += *)
-    (*   | Exec : ((eexpr -> 'a) -> eexpr -> 'a) list * 'b expr -> 'd expr *)
-    (*   | Exit : ret expr *)
-
-    (* let rec eval : type a . *)
-    (*   (eexpr -> spec list) -> a expr -> spec list *)
-    (*   = *)
-    (*   fun expr -> *)
-    (*     begin match expr with *)
-    (*       | X (proc, expr, next_expr) -> *)
-    (*         let continuation = *)
-
-    (*       (1* | Ret as r -> *1) *)
-    (*       | _ -> raise Not_found *)
-    (*     end *)
-
-    (* type _ kern = *)
-    (*   | Proc : 'a expr -> sh expr *)
-
-    (* let rec eval : type a b . *)
-    (*   a expr -> b sh -> ret *)
-    (*   = *)
-    (*   fun exprs -> function *)
-    (*     | Pipe (from, to_) -> eval (from exprs) to_ *)
-    (*     | End -> exprs *)
-
-    (* type _ expr += *)
-    (*   | Lis : 'a * 'b expr -> 'a expr *)
-      (* List.fold_left ~init:(Ret 0) *)
-
-
     type exn += Trap of eexpr
-    type exn += Exit of ret
-    (* type exn += Unknown_expr of *)
 
-    (* type _ kexpr = *)
-    (*   | Proc : (eexpr -> 'a) * 'b kexpr -> ((eexpr -> 'a) * 'b kexpr) kexpr *)
-    (*   | Ret : unit kexpr *)
-
-
-    let rec exec kern expr =
-      List.fold_left kern ~f:(fun acc proc -> (
-            try proc expr
-            with Trap expr
-
-
-
-    (* let exit a = raise (Exit (Ret a)) *)
-    (* let trap e = raise (Trap (Expr e)) *)
+    let trap expr = raise (Trap expr)
 
     let rec ocamlc trap = function Expr expr ->
       begin match expr with
@@ -195,18 +146,14 @@ module Dsl = struct
         | expr -> trap (Expr expr)
       end
 
-
-    let rec ocamlc_ext = function Expr expr ->
+    let rec ocamlc_ext trap = function Expr expr ->
       begin match expr with
-        | I (s, rest) -> A ("-I " ^ s) :: ocamlc_ext (Expr rest)
-        | expr -> raise (Exit expr)
+        | I (s, rest) -> (A ("-I " ^ s)) :: ocamlc_ext trap (Expr rest)
+        | expr -> trap (Expr expr)
       end
 
-
     let dsl_main =
-      exec
-        [ocamlc; ocamlc_ext]
-        (O ("test.out", I ("inc/path", End)))
+        ocamlc (ocamlc_ext trap) (Expr (O ("test.out", I ("inc/path", End))))
   end
 
 
