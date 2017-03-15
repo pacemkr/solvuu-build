@@ -138,9 +138,9 @@ module Dsl = struct
 
     (* type 'a proc = (eexpr -> 'a) -> eexpr -> 'a *)
 
-    type _ expr +=
-      | Exec : ((eexpr -> 'a) -> eexpr -> 'a) * 'b expr -> 'b expr
-      | Exit : ret expr
+    (* type _ expr += *)
+    (*   | Exec : ((eexpr -> 'a) -> eexpr -> 'a) list * 'b expr -> 'd expr *)
+    (*   | Exit : ret expr *)
 
     (* let rec eval : type a . *)
     (*   (eexpr -> spec list) -> a expr -> spec list *)
@@ -168,27 +168,51 @@ module Dsl = struct
     (*   | Lis : 'a * 'b expr -> 'a expr *)
       (* List.fold_left ~init:(Ret 0) *)
 
-    let rec ocamlc : (eexpr -> spec list) -> eexpr -> spec list
-      =
-      fun eval -> function Expr expr ->
-        begin match expr with
-          | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval (Expr rest)
-          | End -> []
-          | expr -> eval (Expr expr)
-        end
+
+    type exn += Trap of eexpr
+    type exn += Exit of ret
+
+    type _ kexpr =
+      | Proc : (eexpr -> 'a) * 'b kexpr -> ((eexpr -> 'a) * 'b kexpr) kexpr
+      | Ret : unit kexpr
 
 
-    let rec extension
+    let rec exec : type a .
+      a kexpr -> eexpr -> ret
       =
-      fun eval -> function Expr expr ->
-        begin match expr with
-          | I (s, rest) -> s :: extension eval (Expr rest)
-          | expr -> eval (Expr expr)
-        end
+      fun proc expr  ->
+        match proc with
+        | Proc (proc, procs) ->
+          begin
+            try Ret (proc expr)
+            with Trap expr -> exec procs expr
+          end
+        (* | Ret -> *)
+
+
+
+    let exit a = raise (Exit (Ret a))
+    let trap e = raise (Trap (Expr e))
+
+    let rec ocamlc = function Expr expr ->
+      begin match expr with
+        | O (s, rest) -> (A ("-o " ^ s)) :: ocamlc (Expr rest)
+        | End -> []
+        | expr -> trap expr
+      end
+
+
+    let rec ocamlc_ext = function Expr expr ->
+      begin match expr with
+        | I (s, rest) -> A ("-I " ^ s) :: ocamlc_ext (Expr rest)
+        | expr -> raise (Exit expr)
+      end
 
 
     let dsl_main =
-      Exec (ocamlc, O ("test.out", Exec (extension, I ("inc/path", End))))
+      exec
+        (Proc (ocamlc, Proc (ocamlc_ext, Ret)))
+        (O ("test.out", I ("inc/path", End)))
   end
 
 
