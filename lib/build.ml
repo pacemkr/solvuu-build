@@ -139,7 +139,7 @@ module Dsl = struct
     (* type 'a proc = (eexpr -> 'a) -> eexpr -> 'a *)
 
     type _ expr +=
-      | Exec : ((eexpr -> 'a) -> eexpr -> 'a) * 'b expr * 'c expr -> 'b expr
+      | Exec : ((eexpr -> 'a) -> eexpr -> 'a) * 'b expr -> 'b expr
       | Exit : ret expr
 
     (* let rec eval : type a . *)
@@ -188,7 +188,7 @@ module Dsl = struct
 
 
     let dsl_main =
-      Exec (ocamlc, O ("test.out", Exec (extension, I ("inc/path", End), Exit)), Exit)
+      Exec (ocamlc, O ("test.out", Exec (extension, I ("inc/path", End))))
   end
 
 
