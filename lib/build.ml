@@ -171,34 +171,28 @@ module Dsl = struct
 
     type exn += Trap of eexpr
     type exn += Exit of ret
+    (* type exn += Unknown_expr of *)
 
-    type _ kexpr =
-      | Proc : (eexpr -> 'a) * 'b kexpr -> ((eexpr -> 'a) * 'b kexpr) kexpr
-      | Ret : unit kexpr
+    (* type _ kexpr = *)
+    (*   | Proc : (eexpr -> 'a) * 'b kexpr -> ((eexpr -> 'a) * 'b kexpr) kexpr *)
+    (*   | Ret : unit kexpr *)
 
 
-    let rec exec : type a .
-      a kexpr -> eexpr -> ret
-      =
-      fun proc expr  ->
-        match proc with
-        | Proc (proc, procs) ->
-          begin
-            try Ret (proc expr)
-            with Trap expr -> exec procs expr
-          end
-        (* | Ret -> *)
+    let rec exec kern expr =
+      List.fold_left kern ~f:(fun acc proc -> (
+            try proc expr
+            with Trap expr
 
 
 
-    let exit a = raise (Exit (Ret a))
-    let trap e = raise (Trap (Expr e))
+    (* let exit a = raise (Exit (Ret a)) *)
+    (* let trap e = raise (Trap (Expr e)) *)
 
-    let rec ocamlc = function Expr expr ->
+    let rec ocamlc trap = function Expr expr ->
       begin match expr with
-        | O (s, rest) -> (A ("-o " ^ s)) :: ocamlc (Expr rest)
+        | O (s, rest) -> (A ("-o " ^ s)) :: ocamlc trap (Expr rest)
         | End -> []
-        | expr -> trap expr
+        | expr -> trap (Expr expr)
       end
 
 
@@ -211,7 +205,7 @@ module Dsl = struct
 
     let dsl_main =
       exec
-        (Proc (ocamlc, Proc (ocamlc_ext, Ret)))
+        [ocamlc; ocamlc_ext]
         (O ("test.out", I ("inc/path", End)))
   end
 
