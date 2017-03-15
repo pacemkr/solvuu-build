@@ -134,21 +134,23 @@ module Dsl = struct
   (* An Ocaml unix, get it??? *)
   module Onix = struct
 
-    type eexpr = Eexpr : 'a expr -> eexpr
+    type eexpr = Expr : 'a expr -> eexpr
 
     type _ expr +=
-      | X : ('a expr -> 'b expr) * 'a expr -> (('a expr -> 'b expr) * 'a expr) expr
+      | X : ((eexpr -> 'a) -> 'b expr -> 'a) * 'b expr * 'c expr -> (('a expr -> 'b expr) * 'a expr * 'c expr) expr
       | Ret : ret expr
 
-    let rec kern : type a b .
-      a expr -> b expr
-      =
-      fun expr ->
-        begin match expr with
-          | X (proc, expr, next_expr) -> kern (proc expr)
-          (* | Ret as r -> *)
-          | _ -> raise Not_found
-        end
+    (* let rec eval : type a . *)
+    (*   (eexpr -> spec list) -> a expr -> spec list *)
+    (*   = *)
+    (*   fun expr -> *)
+    (*     begin match expr with *)
+    (*       | X (proc, expr, next_expr) -> *)
+    (*         let continuation = *)
+
+    (*       (1* | Ret as r -> *1) *)
+    (*       | _ -> raise Not_found *)
+    (*     end *)
 
     (* type _ kern = *)
     (*   | Proc : 'a expr -> sh expr *)
@@ -164,13 +166,14 @@ module Dsl = struct
     (*   | Lis : 'a * 'b expr -> 'a expr *)
       (* List.fold_left ~init:(Ret 0) *)
 
-    let rec ocamlc : type a .
-      (eexpr -> spec list) -> a expr -> spec list
+    let rec ocamlc : (eexpr -> spec list) -> eexpr -> spec list
       =
-      fun eval -> function
-      | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval rest
-      | End -> []
-      | expr -> eval (Eexpr expr)
+      fun eval -> function Expr expr ->
+        begin match expr with
+          | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval rest
+          | End -> []
+          | expr -> eval (Expr expr)
+        end
 
 
     let rec extension : type a .
@@ -178,12 +181,11 @@ module Dsl = struct
       =
       fun eval -> function
       | I (s, rest) -> A ("-I " ^ s) :: extension eval rest
-      | expr -> eval (Eexpr expr)
+      | expr -> eval (Expr expr)
 
 
     let dsl_main =
-      eval
-      Exec (ocamlc, O ("test.out", End), Ret)
+      X (ocamlc, O ("test.out", X (extension, I ("inc/path", End), Ret)), Ret)
   end
 
 
