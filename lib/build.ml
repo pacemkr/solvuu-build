@@ -134,12 +134,10 @@ module Dsl = struct
   (* An Ocaml unix, get it??? *)
   module Onix = struct
 
-    type eexpr = Fun : 'a expr -> eexpr
-
-    (* type proc = *)
+    type eexpr = Eexpr : 'a expr -> eexpr
 
     type _ expr +=
-      | Exec : ('a expr -> 'b expr) * 'a expr -> (('a expr -> 'b expr) * 'a expr) expr
+      | X : ('a expr -> 'b expr) * 'a expr -> (('a expr -> 'b expr) * 'a expr) expr
       | Ret : ret expr
 
     let rec kern : type a b .
@@ -147,7 +145,7 @@ module Dsl = struct
       =
       fun expr ->
         begin match expr with
-          | Exec (proc, expr) -> kern (proc expr)
+          | X (proc, expr, next_expr) -> kern (proc expr)
           (* | Ret as r -> *)
           | _ -> raise Not_found
         end
@@ -166,14 +164,26 @@ module Dsl = struct
     (*   | Lis : 'a * 'b expr -> 'a expr *)
       (* List.fold_left ~init:(Ret 0) *)
 
-    let rec ocamlc : type a b . a expr -> b expr
-      = function
-      | O (s, rest) -> Lis (A ("-o " ^ s), ocamlc rest)
-      | e -> e
+    let rec ocamlc : type a .
+      (eexpr -> spec list) -> a expr -> spec list
+      =
+      fun eval -> function
+      | O (s, rest) -> A ("-o " ^ s) :: ocamlc eval rest
+      | End -> []
+      | expr -> eval (Eexpr expr)
 
-    let main = function
-      | Exec (Ocamlc expr) -> Expr (ocamlc expr)
-      | es -> es
+
+    let rec extension : type a .
+      (eexpr -> spec list) -> a expr -> spec list
+      =
+      fun eval -> function
+      | I (s, rest) -> A ("-I " ^ s) :: extension eval rest
+      | expr -> eval (Eexpr expr)
+
+
+    let dsl_main =
+      eval
+      Exec (ocamlc, O ("test.out", End), Ret)
   end
 
 
