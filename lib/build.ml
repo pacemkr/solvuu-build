@@ -26,36 +26,6 @@ module Dsl = struct
     type 'a a
     type 'a t = 'a a
   end
-
-  (* Expressions are namespaced using modules, as bellow. *)
-
-  (* An... Onix kernel, get it??? *)
-  (* module Kern = struct *)
-  (*   type 'a proc = 'a -> eexpr -> 'a option *)
-
-  (*   type exn += Trap : 'a * eexpr -> exn *)
-
-  (*   type 'a ret = *)
-  (*     | Ret of 'a *)
-  (*     | Trap of eexpr *)
-
-  (*   let rec exec_exn acc proc expr = *)
-  (*     match proc with *)
-  (*     | p :: ps as kern -> *)
-  (*         begin match (p acc expr) with *)
-  (*         | Ret ret -> ret *)
-  (*         | Trap expr -> ( *)
-  (*             match exec_exn acc ps expr with *)
-  (*             | Ret _ as ret -> ret *)
-  (*             | Trap expr -> ( *)
-  (*                 match ps with *)
-  (*                 | [] -> exec_exn acc ps expr *)
-  (*                 | _ :: _ -> exec_exn acc kern expr *)
-  (*               ) *)
-  (*           ) *)
-  (*         end *)
-  (*     | [] -> raise (Trap (acc, expr)) *)
-  (* end *)
 end
 
 
@@ -178,8 +148,6 @@ module Build_ocaml = struct
     type _ expr +=
       | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
   end
-
-  (* open Kern *)
 
   let rec ocamlc = Ocamlc.(
       function Expr expr ->
