@@ -160,7 +160,7 @@ module Build_ocaml = struct
       | I : string * 'a T.t expr -> string T.t expr
       | Version : 'a T.t expr -> unit T.t expr
       | End : unit T.t expr
-      | Trap : (eexpr -> Ob.spec list) -> (eexpr -> Ob.spec list) T.t expr
+      | Trap : (eexpr -> Ob.spec list) * eexpr * 'a T.t expr -> ((eexpr -> Ob.spec list) * eexpr * eexpr) T.t expr
   end
 
   module Ocamlopt = struct
@@ -169,6 +169,7 @@ module Build_ocaml = struct
 
     type _ expr +=
       | I : string * 'a T.t expr -> string T.t expr
+      | End : unit T.t expr
   end
 
   module Artifact = struct
@@ -186,7 +187,7 @@ module Build_ocaml = struct
           | O (v, expr) -> (Ob.A ("-o " ^ v)) :: ocamlc (Expr expr)
           | I (v, expr) -> (Ob.A ("-I " ^ v)) :: ocamlc (Expr expr)
           | End -> []
-          | Trap trap -> trap (Expr expr)
+          | Trap (trap, expr, exprs) -> (trap expr) @ (ocamlc (Expr exprs))
           | _ -> raise Not_found
         end
     )
@@ -194,14 +195,12 @@ module Build_ocaml = struct
   let rec ocamlc_ext = Ocamlc.(function Expr expr ->
     begin match expr with
       | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext (Expr rest)
-      | expr -> Kern.trap (Expr expr)
+      | End -> []
+      | _ -> raise Not_found
     end)
 
   let dsl_main = Ocamlc.(
-      Kern.exec [
-        (ocamlc, O ("test.out"));
-        (ocamlc_ext, I ("inc/path"))
-      ]
+      ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End))))
     )
 end
 
