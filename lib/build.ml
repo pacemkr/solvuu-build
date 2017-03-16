@@ -30,16 +30,32 @@ module Dsl = struct
   (* Expressions are namespaced using modules, as bellow. *)
 
   (* An... Onix kernel, get it??? *)
-  module Kern = struct
-    type exn += Trap of eexpr
+  (* module Kern = struct *)
+  (*   type 'a proc = 'a -> eexpr -> 'a option *)
 
-    type 'a proc = (eexpr -> 'a) -> eexpr -> 'a
+  (*   type exn += Trap : 'a * eexpr -> exn *)
 
-    let trap expr = raise (Trap expr)
+  (*   type 'a ret = *)
+  (*     | Ret of 'a *)
+  (*     | Trap of eexpr *)
 
-    (* TODO let exec = List.fold_left ~f:(fun kern proc -> (kern proc)) ~init:trap *)
-    (* TODO Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
-  end
+  (*   let rec exec_exn acc proc expr = *)
+  (*     match proc with *)
+  (*     | p :: ps as kern -> *)
+  (*         begin match (p acc expr) with *)
+  (*         | Ret ret -> ret *)
+  (*         | Trap expr -> ( *)
+  (*             match exec_exn acc ps expr with *)
+  (*             | Ret _ as ret -> ret *)
+  (*             | Trap expr -> ( *)
+  (*                 match ps with *)
+  (*                 | [] -> exec_exn acc ps expr *)
+  (*                 | _ :: _ -> exec_exn acc kern expr *)
+  (*               ) *)
+  (*           ) *)
+  (*         end *)
+  (*     | [] -> raise (Trap (acc, expr)) *)
+  (* end *)
 end
 
 
@@ -139,18 +155,20 @@ module Build_ocaml = struct
     module T = Typ ()
 
     type _ expr +=
+      (* | Ocamlc : 'a T.t expr -> Ob.spec list expr *)
       | O : string * 'a T.t expr -> string T.t expr
       | I : string * 'a T.t expr -> string T.t expr
       | Version : 'a T.t expr -> unit T.t expr
       | End : unit T.t expr
+      | Trap : (eexpr -> Ob.spec list) -> (eexpr -> Ob.spec list) T.t expr
   end
 
   module Ocamlopt = struct
     module T = Typ ()
 
+
     type _ expr +=
       | I : string * 'a T.t expr -> string T.t expr
-      | End : unit T.t expr
   end
 
   module Artifact = struct
@@ -160,23 +178,30 @@ module Build_ocaml = struct
       | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
   end
 
+  (* open Kern *)
 
-  let rec ocamlc trap = Ocamlc.(function Expr expr ->
+  let rec ocamlc = Ocamlc.(
+      function Expr expr ->
+        begin match expr with
+          | O (v, expr) -> (Ob.A ("-o " ^ v)) :: ocamlc (Expr expr)
+          | I (v, expr) -> (Ob.A ("-I " ^ v)) :: ocamlc (Expr expr)
+          | End -> []
+          | Trap trap -> trap (Expr expr)
+          | _ -> raise Not_found
+        end
+    )
+
+  let rec ocamlc_ext = Ocamlc.(function Expr expr ->
     begin match expr with
-      | O (s, rest) -> (Ob.A ("-o " ^ s)) :: ocamlc trap (Expr rest)
-      | End -> []
-      | expr -> trap (Expr expr)
-    end)
-
-
-  let rec ocamlc_ext trap = Ocamlc.(function Expr expr ->
-    begin match expr with
-      | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext trap (Expr rest)
-      | expr -> trap (Expr expr)
+      | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext (Expr rest)
+      | expr -> Kern.trap (Expr expr)
     end)
 
   let dsl_main = Ocamlc.(
-      ocamlc (ocamlc_ext Kern.trap) (Expr (O ("test.out", I ("inc/path", End))))
+      Kern.exec [
+        (ocamlc, O ("test.out"));
+        (ocamlc_ext, I ("inc/path"))
+      ]
     )
 end
 
