@@ -19,187 +19,27 @@ module Dsl = struct
   (* Extensible expression vocabulary. *)
   type _ expr = ..
 
+  type eexpr = Expr : 'a expr -> eexpr
+
   (* Non-unifying type minter. *)
   module Typ () = struct
     type 'a a
     type 'a t = 'a a
   end
 
-  (* Usage example, also bootsraps the language. *)
+  (* Expressions are namespaced using modules, as bellow. *)
 
-  (* Define new type *)
-  module Lang = Typ ()
-
-  (* Define the root expression.
-   * Everything else in the language is namespaced using modules. *)
-  (* type _ expr += Exec : ('a * 'b Lang.t) expr -> ('a * 'b Lang.t) expr *)
-
-  (* Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
-
-  (* type ('a, 'b) boot = ('a expr -> 'b) * 'a expr *)
-  (* type eexpr = Eexpr : 'a expr -> eexpr *)
-
-  (* type _ exprs = *)
-  (* | Expr : eexpr * 'b exprs -> (eexpr * 'b exprs) exprs *)
-  (* | Exit : unit exprs *)
-
-  (* Executor, rec funs for funs.
-   *
-   * Everything in the language is implemented using extensions,
-   * which are nothing more than function matching on an expression.
-   * *)
-  (* let rec exec : type a b . *)
-  (*   (eexpr -> a) -> b exprs -> unit *)
-  (*   = *)
-  (*   fun kern exprs -> *)
-  (*     match exprs with *)
-  (*     | Expr (expr, exprs) -> *)
-  (*       ignore (kern expr); *)
-  (*       ignore (exec kern exprs) *)
-  (*     | Exit -> () *)
-
-
-  (* Sample extension *)
-
-  (* let kern = function *)
-  (*   | Time -> print_endline ("TIME IS:" ^ (string_of_float (Sys.time ()))) *)
-  (*   | _ -> raise Not_found *)
-
-  (* let kern2 = function *)
-  (*   | Eexpr (Time as b) -> kern b *)
-  (*   | _ -> raise Not_found *)
-
-  type eexpr = Expr : 'a expr -> eexpr
-
-  (* Core expressions. *)
-  (* type _ exprs = *)
-  (*   (1* | Exec : 'a expr -> unit expr *1) *)
-  (*   | Exec : eexpr * 'b exprs -> ('a expr * 'b exprs) exprs *)
-  (*   | Exit : unit exprs *)
-
-  type ret = Ret : 'a -> ret
-
-  type _ expr +=
-    (* | Expr : 'a expr -> eexpr expr *)
-    | Exit : unit expr
-    (* | Ret : 'a -> unit expr *)
-
-  module T = Typ ()
-  type _ expr +=
-    | Ocamlc : 'a T.t expr -> 'a T.t expr
-    | O : string * 'a T.t expr -> string T.t expr
-    | I : string * 'a T.t expr -> string T.t expr
-    | Version : 'a T.t expr -> unit T.t expr
-    | End : unit T.t expr (* Empty tail constructor. *)
-
-  open Ocamlbuild_plugin
-
-  (* module Variant3 = struct *)
-  (*   type _ expr += *)
-  (*     | X : ('a expr -> (eexpr -> ret) -> ret) * 'a expr -> 'b expr *)
-
-  (*   let rec eval : *)
-  (*     eexpr -> ret *)
-  (*     = function *)
-  (*     | Expr expr -> *)
-  (*        begin match expr with *)
-  (*        | X (kernel, exprs) -> Ret (kernel exprs eval) *)
-  (*        | _ -> raise Not_found *)
-  (*        end *)
-  (*     (1* | _ -> raise Not_found *1) *)
-
-  (*   let rec ocamlc : type a. *)
-  (*     a expr -> (eexpr -> spec list) -> ret *)
-  (*     = *)
-  (*     fun expr eval -> *)
-  (*     match expr with *)
-  (*     | O (s, rest) -> Ret (A ("-o " ^ s) :: (match eval (Expr rest) with Ret r -> r)) *)
-  (*     | End -> Ret [] *)
-  (*     | a -> eval (Expr a) *)
-
-  (*   (1* let rec ocamlcI : type a . a expr -> spec list *1) *)
-  (*   (1*   = function *1) *)
-  (*   (1*   | O (s, rest) -> A ("-o " ^ s) :: ocamlc rest *1) *)
-  (*   (1*   | End -> [] *1) *)
-  (*   (1*   | _ -> raise Not_found *1) *)
-
-  (*   let main = *)
-  (*     Expr (X (ocamlc, O ("test.out", End))) *)
-  (*   (1* let kern1 = function *1) *)
-  (*   (1*   | Expr (Ocamlc expr) -> ocamlc expr *1) *)
-  (*   (1*   | es -> es *1) *)
-
-  (* end *)
-
-  (* An... Onix, get it??? *)
+  (* An... Onix kernel, get it??? *)
   module Kern = struct
-    type eexpr = Expr : 'a expr -> eexpr
-
     type exn += Trap of eexpr
+
+    type 'a proc = (eexpr -> 'a) -> eexpr -> 'a
 
     let trap expr = raise (Trap expr)
 
-    let rec ocamlc trap = function Expr expr ->
-      begin match expr with
-        | O (s, rest) -> (A ("-o " ^ s)) :: ocamlc trap (Expr rest)
-        | End -> []
-        | expr -> trap (Expr expr)
-      end
-
-    let rec ocamlc_ext trap = function Expr expr ->
-      begin match expr with
-        | I (s, rest) -> (A ("-I " ^ s)) :: ocamlc_ext trap (Expr rest)
-        | expr -> trap (Expr expr)
-      end
-
-    let dsl_main =
-        ocamlc (ocamlc_ext trap) (Expr (O ("test.out", I ("inc/path", End))))
+    (* TODO let exec = List.fold_left ~f:(fun kern proc -> (kern proc)) ~init:trap *)
+    (* TODO Polymorphic linked list ['a; 'b; 'c;..] of other expressions. *)
   end
-
-
-  (* module Variant1 = struct *)
-
-  (*   type eexpr = Expr : 'a expr -> eexpr *)
-
-  (*   type _ kerns = *)
-  (*     | Kern : (eexpr -> eexpr) * 'c kerns -> ((eexpr -> eexpr) * 'c) kerns *)
-  (*     | End : unit kerns *)
-
-  (*   let rec eval : type a . *)
-  (*     a kerns -> eexpr -> eexpr *)
-  (*     = *)
-  (*     fun kerns exprs -> *)
-  (*       match kerns with *)
-  (*       | Kern (k, ks) -> eval ks (k exprs) *)
-  (*       | End -> exprs *)
-
-  (*   type _ expr += *)
-  (*     | Lis : 'a * eexpr -> 'a expr *)
-  (*     (1* List.fold_left ~init:(Ret 0) *1) *)
-
-  (*   let rec ocamlc : type a . a expr -> eexpr *)
-  (*     = function *)
-  (*     | O (s, rest) -> Expr (Lis (A ("-o " ^ s), ocamlc rest)) *)
-  (*     | e -> Expr e *)
-
-  (*   let kern1 = function *)
-  (*     | Expr (Ocamlc expr) -> ocamlc expr *)
-  (*     | es -> es *)
-  (* end *)
-
-
-    (* exec kern (Expr (Eexpr Time, Exit)) *)
-
-  (* let rec build *)
-  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
-  (*     ?(init=[]) *)
-  (*     ~f *)
-  (*     deps *)
-  (*   = *)
-  (*   if (is_target deps) then deps *)
-  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
-
-
 end
 
 
@@ -249,6 +89,8 @@ end
 
 module Build_ocaml = struct
   include Build
+
+  module Ob = Ocamlbuild_plugin
 
   (* This mostly mints new types for each file type,
    * to prevent accidentally mixing up input formats for tools. *)
@@ -300,7 +142,7 @@ module Build_ocaml = struct
       | O : string * 'a T.t expr -> string T.t expr
       | I : string * 'a T.t expr -> string T.t expr
       | Version : 'a T.t expr -> unit T.t expr
-      | End : unit T.t expr (* Empty tail constructor. *)
+      | End : unit T.t expr
   end
 
   module Ocamlopt = struct
@@ -317,13 +159,27 @@ module Build_ocaml = struct
     type _ expr +=
       | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
   end
+
+
+  let rec ocamlc trap = Ocamlc.(function Expr expr ->
+    begin match expr with
+      | O (s, rest) -> (Ob.A ("-o " ^ s)) :: ocamlc trap (Expr rest)
+      | End -> []
+      | expr -> trap (Expr expr)
+    end)
+
+
+  let rec ocamlc_ext trap = Ocamlc.(function Expr expr ->
+    begin match expr with
+      | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext trap (Expr rest)
+      | expr -> trap (Expr expr)
+    end)
+
+  let dsl_main = Ocamlc.(
+      ocamlc (ocamlc_ext Kern.trap) (Expr (O ("test.out", I ("inc/path", End))))
+    )
 end
 
-
-(* let test = *)
-(*   let open Build_ocaml in *)
-(*   let expr = Exec (Std.Expr (Ocamlc.(Version End),Std.End)) in *)
-(*   Std.Expr (Ocamlc.(O ("file.out", I ("p/a/t/h", I ("other/p/a/t/h", End)))), Std.End) *)
 
 
 (*   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in *)
