@@ -198,8 +198,14 @@ module Build_ocaml = struct
   module Build = struct
     module T = Typ ()
 
+    type ('a, 'b) rule = {
+      deps : 'a File.T.t expr;
+      prods :  'b File.T.t expr;
+      cmds : eexpr;
+    }
+
     type _ expr +=
-      | Rule : 'a File.T.t expr * 'b File.T.t expr * eexpr -> unit T.t expr
+      | Rule : ('a, 'b) rule * 'c T.t expr -> (('a, 'b) rule * 'c T.t expr) expr
       | End : unit T.t expr
   end
 
@@ -222,11 +228,12 @@ module Build_ocaml = struct
     let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
     let deps = Mli (mli_file, End) in
     let prods = Cmi (cmi_file, End) in
+    let open Build in
     let cmds =
       (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), End))), End))
       (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
     in
-    (Build.Rule (deps, prods, Expr cmds))
+    Build.Rule ({deps; prods; cmds = Expr cmds}, End)
 
   let lib = compile_mli
 end
