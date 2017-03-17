@@ -148,12 +148,6 @@ module Build_ocaml = struct
   (*     | End : unit T.t expr *)
   (* end *)
 
-  module Artifact = struct
-    module T = Typ ()
-
-    type _ expr +=
-      | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
-  end
 
 
   (* let rec ocamlc_ext = Ocamlc.(function Expr expr -> *)
@@ -167,18 +161,28 @@ module Build_ocaml = struct
   (*     ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))) *)
   (*   ) *)
 
-  (* let ls_dir dir = *)
-  (*   let open File in *)
-  (*   let all_files = *)
-  (*     try Sys.readdir dir |> Array.to_list *)
-  (*     with _ -> [] *)
-  (*   in *)
-  (*   List.filter_map all_files ~f:(fun path -> *)
-  (*       match extension path with *)
-  (*       | ".mli" -> Some (Intf (Mli.of_path (dir ^ "/" ^ path))) *)
-  (*       (1* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *1) *)
-  (*       | _ -> None *)
-  (*     ) *)
+  let ls_dir dir =
+    let open File in
+    let all_files =
+      try Sys.readdir dir |> Array.to_list
+      with _ -> []
+    in
+    let files = List.filter_map all_files ~f:(fun path ->
+        match extension path with
+        | ".mli" -> Some path
+        (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
+        | _ -> None
+      )
+    in
+    List.fold_left ~init:(File.End) ~f:(fun acc path ->
+        match extension path with
+        | ".mli" -> (Mli.of_path path, acc)
+        | _ -> raise Not_found
+      )
+
+
+
+
 
   module Tools = struct
     type _ expr +=
@@ -204,7 +208,7 @@ module Build_ocaml = struct
     }
 
     type _ expr +=
-      | Rule : ('a, 'b) rule * 'c T.t expr -> (('a, 'b) rule * 'c T.t expr) expr
+      | Rule : ('a, 'b) rule * 'c T.t expr -> eexpr T.t expr
       | End : unit T.t expr
 
 
@@ -227,31 +231,15 @@ module Build_ocaml = struct
           install expr
         )
       | _ -> ()
+  end
 
 
-  (* let install_rules rules = *)
-  (*   Ocamlbuild_plugin.dispatch @@ function *)
-  (*   | Ocamlbuild_plugin.After_rules -> ( *)
+  module Artifact = struct
+    module T = Typ ()
 
-  (*       Ocamlbuild_plugin.clear_rules(); *)
-
-  (*       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |> *)
-  (*       List.iter ~f:(fun {deps; prods; cmds} -> *)
-  (*           Rule.rule ~deps ~prods (fun _ _ -> *)
-
-
-  (*               (1* get tool from cmd variant *1) *)
-
-
-  (*               List.map cmds ~f:(function *)
-  (*                   | (t : cmd) -> Tool.to_spec t *)
-
-  (*                   (1* | a -> a *1) *)
-  (*                 ) *)
-  (*             ) *)
-  (*         ) *)
-  (*     ) *)
-  (*   | _ -> () *)
+    type _ expr +=
+      | Compiled_intf : 'a Build.T.t expr * eexpr -> 'a Build.T.t expr
+      | End : unit T.t expr
   end
 
   let compile_mli mli_file =
@@ -266,7 +254,19 @@ module Build_ocaml = struct
     in
     Build.Rule ({deps; prods; cmds = Expr cmds}, End)
 
-  let lib = compile_mli
+  let rec build = function Expr expr -> (match expr with
+      | File.Mli (f, expr) -> (Expr (Artifact.Compiled_intf (compile_mli f, build (Expr expr))))
+      (* | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs)) *)
+      (* | End -> [] *)
+      | _ -> raise Not_found
+    )
+
+  (* let lib ~dir = *)
+  (*   ls_dir ~dir |> *)
+  (*   build_lid *)
+
+  (*   compile_mli "" |> Build.install_rules *)
+
 end
 
 
