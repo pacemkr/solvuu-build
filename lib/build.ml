@@ -40,29 +40,6 @@ module Build = struct
   (* type _ expr += *)
   (*   | Rule : 'a * 'b * 'c expr -> ('a * 'b * 'c) expr *)
 
-  (* let install_rules rules = *)
-  (*   Ocamlbuild_plugin.dispatch @@ function *)
-  (*   | Ocamlbuild_plugin.After_rules -> ( *)
-
-  (*       Ocamlbuild_plugin.clear_rules(); *)
-
-  (*       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |> *)
-  (*       List.iter ~f:(fun {deps; prods; cmds} -> *)
-  (*           Rule.rule ~deps ~prods (fun _ _ -> *)
-
-
-  (*               (1* get tool from cmd variant *1) *)
-
-
-  (*               List.map cmds ~f:(function *)
-  (*                   | (t : cmd) -> Tool.to_spec t *)
-
-  (*                   (1* | a -> a *1) *)
-  (*                 ) *)
-  (*             ) *)
-  (*         ) *)
-  (*     ) *)
-  (*   | _ -> () *)
 
 
   (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
@@ -130,6 +107,12 @@ module Build_ocaml = struct
       | Cmi : Cmi.t * 'a T.t expr -> Cmi.t T.t expr
       | Mli : Mli.t * 'a T.t expr -> Mli.t T.t expr
       | End : unit T.t expr
+
+    let rec to_string = function Expr expr -> (match expr with
+        | Cmi (f, fs) -> (Cmi.path f) :: to_string (Expr fs)
+        | Mli (f, fs) -> (Mli.path f) :: to_string (Expr fs)
+        | _ -> raise Not_found
+      )
   end
 
 
@@ -141,12 +124,14 @@ module Build_ocaml = struct
       | I : string * 'a T.t expr -> string T.t expr
       | Version : 'a T.t expr -> unit T.t expr
       | End : unit T.t expr
+      | Pos : string * 'a T.t expr -> string T.t expr
       | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr
 
     let rec to_spec = function Expr expr -> (match expr with
-        | O (v, expr) -> (Ob.A ("-o " ^ v)) :: to_spec (Expr expr)
-        | I (v, expr) -> (Ob.A ("-I " ^ v)) :: to_spec (Expr expr)
-        (* | Version : 'a T.t expr -> unit T.t expr *)
+        | O (fl, expr) -> (Ob.A ("-o " ^ fl)) :: to_spec (Expr expr)
+        | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr)
+        | Version expr -> (Ob.A "--version") :: to_spec (Expr expr)
+        | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr)
         | End -> []
         | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs))
         | _ -> raise Not_found
@@ -195,20 +180,6 @@ module Build_ocaml = struct
   (*       | _ -> None *)
   (*     ) *)
 
-  module Build = struct
-    module T = Typ ()
-
-    type ('a, 'b) rule = {
-      deps : 'a File.T.t expr;
-      prods :  'b File.T.t expr;
-      cmds : eexpr;
-    }
-
-    type _ expr +=
-      | Rule : ('a, 'b) rule * 'c T.t expr -> (('a, 'b) rule * 'c T.t expr) expr
-      | End : unit T.t expr
-  end
-
   module Tools = struct
     type _ expr +=
       | Ocamlc : eexpr * 'a expr -> (eexpr * eexpr) expr
@@ -223,6 +194,66 @@ module Build_ocaml = struct
     let to_seq expr = Ob.Seq (to_cmds expr)
   end
 
+  module Build = struct
+    module T = Typ ()
+
+    type ('a, 'b) rule = {
+      deps : 'a File.T.t expr;
+      prods :  'b File.T.t expr;
+      cmds : eexpr;
+    }
+
+    type _ expr +=
+      | Rule : ('a, 'b) rule * 'c T.t expr -> (('a, 'b) rule * 'c T.t expr) expr
+      | End : unit T.t expr
+
+
+    let rec install = function Expr expr -> (match expr with
+        | Rule ({deps; prods; cmds}, rule) ->
+          Rule.rule ~deps:(File.to_string (Expr deps)) ~prods:(File.to_string (Expr prods)) (fun _ _ ->
+              Tools.to_seq cmds
+            );
+          install (Expr rule)
+        | End -> ()
+        (* | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
+        | _ -> raise Not_found
+      )
+
+    let install_rules expr =
+      Ocamlbuild_plugin.dispatch @@ function
+      | Ocamlbuild_plugin.After_rules -> (
+
+          Ocamlbuild_plugin.clear_rules();
+          install expr
+        )
+      | _ -> ()
+
+
+  (* let install_rules rules = *)
+  (*   Ocamlbuild_plugin.dispatch @@ function *)
+  (*   | Ocamlbuild_plugin.After_rules -> ( *)
+
+  (*       Ocamlbuild_plugin.clear_rules(); *)
+
+  (*       List.filter_map ~f:(function Rule r -> Some r | _ -> None) rules |> *)
+  (*       List.iter ~f:(fun {deps; prods; cmds} -> *)
+  (*           Rule.rule ~deps ~prods (fun _ _ -> *)
+
+
+  (*               (1* get tool from cmd variant *1) *)
+
+
+  (*               List.map cmds ~f:(function *)
+  (*                   | (t : cmd) -> Tool.to_spec t *)
+
+  (*                   (1* | a -> a *1) *)
+  (*                 ) *)
+  (*             ) *)
+  (*         ) *)
+  (*     ) *)
+  (*   | _ -> () *)
+  end
+
   let compile_mli mli_file =
     let open File in
     let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
@@ -230,7 +261,7 @@ module Build_ocaml = struct
     let prods = Cmi (cmi_file, End) in
     let open Build in
     let cmds =
-      (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), End))), End))
+      (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), End))
       (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
     in
     Build.Rule ({deps; prods; cmds = Expr cmds}, End)
