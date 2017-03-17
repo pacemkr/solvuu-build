@@ -16,6 +16,8 @@ open Util.Filename
  * Expressions and their relationships are defined by extending a single GADT type.
  **)
 module Dsl = struct
+  type exn += Fwhale of string
+
   (* Extensible expression vocabulary. *)
   type _ expr = ..
 
@@ -31,27 +33,14 @@ module Dsl = struct
   module Kern = struct
     type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b
   end
+
+  (* Traps may need to take eexpr, but nothing else? *)
 end
 
 
 module Build = struct
   include Dsl
 
-  (* type _ expr += *)
-  (*   | Rule : 'a * 'b * 'c expr -> ('a * 'b * 'c) expr *)
-
-
-
-  (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
-  (*       Use a graph to keep track of circular dependecies at each recursion. *)
-  (* let rec build *)
-  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
-  (*     ?(init=[]) *)
-  (*     ~f *)
-  (*     deps *)
-  (*   = *)
-  (*   if (is_target deps) then deps *)
-  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
 end
 
 
@@ -104,14 +93,15 @@ module Build_ocaml = struct
 
     module T = Dsl.Typ ()
     type _ expr +=
-      | Cmi : Cmi.t * 'a T.t expr -> Cmi.t T.t expr
-      | Mli : Mli.t * 'a T.t expr -> Mli.t T.t expr
-      | End : unit T.t expr
+      | Cmi : Cmi.t * 'a T.t expr -> eexpr T.t expr
+      | Mli : Mli.t * 'a T.t expr -> eexpr T.t expr
+      | End : eexpr T.t expr
 
     let rec to_string = function Expr expr -> (match expr with
         | Cmi (f, fs) -> (Cmi.path f) :: to_string (Expr fs)
         | Mli (f, fs) -> (Mli.path f) :: to_string (Expr fs)
-        | _ -> raise Not_found
+        | End -> []
+        | _ -> raise (Fwhale "Uknonwn file type.")
       )
   end
 
@@ -161,6 +151,14 @@ module Build_ocaml = struct
   (*     ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))) *)
   (*   ) *)
 
+  (* let rec filter_files = function Expr expr -> (match expr with *)
+  (*     | Mli (fl, expr) -> (Ob.A ("-o " ^ fl)) :: to_spec (Expr expr) *)
+  (*     | End -> [] *)
+  (*     | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
+  (*     | _ -> raise Not_found *)
+  (*   ) *)
+
+
   let ls_dir dir =
     let open File in
     let all_files =
@@ -174,11 +172,11 @@ module Build_ocaml = struct
         | _ -> None
       )
     in
-    List.fold_left ~init:(File.End) ~f:(fun acc path ->
+    Expr (List.fold_left files ~init:(File.End) ~f:(fun acc path ->
         match extension path with
-        | ".mli" -> (Mli.of_path path, acc)
-        | _ -> raise Not_found
-      )
+        | ".mli" -> File.Mli (Mli.of_path path, acc)
+        | _ -> assert false
+      ))
 
 
 
@@ -254,18 +252,33 @@ module Build_ocaml = struct
     in
     Build.Rule ({deps; prods; cmds = Expr cmds}, End)
 
-  let rec build = function Expr expr -> (match expr with
-      | File.Mli (f, expr) -> (Expr (Artifact.Compiled_intf (compile_mli f, build (Expr expr))))
+  let rec build_lib = function Expr expr -> (match expr with
+      | File.Mli (f, expr) -> (Expr (Artifact.Compiled_intf (compile_mli f, build_lib (Expr expr))))
+      (* | Artifact.Compiled_intf (rule, expr) -> (rule, build_lib expr *)
       (* | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs)) *)
-      (* | End -> [] *)
-      | _ -> raise Not_found
+      | File.End -> (Expr Artifact.End)
+      | _ -> raise (Fwhale "Build failed.")
     )
 
-  (* let lib ~dir = *)
-  (*   ls_dir ~dir |> *)
-  (*   build_lid *)
+  let wrap expr = Expr expr
+
+  let lib ~dir =
+    ls_dir dir |>
+    build_lib
+    (* Build.install_rules *)
 
   (*   compile_mli "" |> Build.install_rules *)
+
+  (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
+  (*       Use a graph to keep track of circular dependecies at each recursion. *)
+  (* let rec build *)
+  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
+  (*     ?(init=[]) *)
+  (*     ~f *)
+  (*     deps *)
+  (*   = *)
+  (*   if (is_target deps) then deps *)
+  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
 
 end
 
