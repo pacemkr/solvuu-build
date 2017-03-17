@@ -21,10 +21,15 @@ module Dsl = struct
 
   type eexpr = Expr : 'a expr -> eexpr
 
+
   (* Non-unifying type minter. *)
   module Typ () = struct
     type 'a a
     type 'a t = 'a a
+  end
+
+  module Kern = struct
+    type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b
   end
 end
 
@@ -32,8 +37,8 @@ end
 module Build = struct
   include Dsl
 
-  type _ expr +=
-    | Rule : 'a * 'b * 'c expr -> ('a * 'b * 'c) expr
+  (* type _ expr += *)
+  (*   | Rule : 'a * 'b * 'c expr -> ('a * 'b * 'c) expr *)
 
   (* let install_rules rules = *)
   (*   Ocamlbuild_plugin.dispatch @@ function *)
@@ -119,28 +124,44 @@ module Build_ocaml = struct
     module O = Make(struct let ext = ".o" end)
     module A = Make(struct let ext = ".a" end)
     module Dll = Make(struct let ext = ".so" end)
+
+    module T = Dsl.Typ ()
+    type _ expr +=
+      | Cmi : Cmi.t * 'a T.t expr -> Cmi.t T.t expr
+      | Mli : Mli.t * 'a T.t expr -> Mli.t T.t expr
+      | End : unit T.t expr
   end
+
 
   module Ocamlc = struct
     module T = Typ ()
 
     type _ expr +=
-      (* | Ocamlc : 'a T.t expr -> Ob.spec list expr *)
       | O : string * 'a T.t expr -> string T.t expr
       | I : string * 'a T.t expr -> string T.t expr
       | Version : 'a T.t expr -> unit T.t expr
       | End : unit T.t expr
-      | Trap : (eexpr -> Ob.spec list) * eexpr * 'a T.t expr -> ((eexpr -> Ob.spec list) * eexpr * eexpr) T.t expr
+      | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr
+
+    let rec to_spec = function Expr expr -> (match expr with
+        | O (v, expr) -> (Ob.A ("-o " ^ v)) :: to_spec (Expr expr)
+        | I (v, expr) -> (Ob.A ("-I " ^ v)) :: to_spec (Expr expr)
+        (* | Version : 'a T.t expr -> unit T.t expr *)
+        | End -> []
+        | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs))
+        | _ -> raise Not_found
+      )
+
+    let to_cmd expr = Ob.(Cmd (S (to_spec expr)))
   end
 
-  module Ocamlopt = struct
-    module T = Typ ()
+  (* module Ocamlopt = struct *)
+  (*   module T = Typ () *)
 
-
-    type _ expr +=
-      | I : string * 'a T.t expr -> string T.t expr
-      | End : unit T.t expr
-  end
+  (*   type _ expr += *)
+  (*     | I : string * 'a T.t expr -> string T.t expr *)
+  (*     | End : unit T.t expr *)
+  (* end *)
 
   module Artifact = struct
     module T = Typ ()
@@ -149,32 +170,69 @@ module Build_ocaml = struct
       | Compiled_interface : File.Cmi.t -> File.Cmi.t expr
   end
 
-  let rec ocamlc = Ocamlc.(
-      function Expr expr ->
-        begin match expr with
-          | O (v, expr) -> (Ob.A ("-o " ^ v)) :: ocamlc (Expr expr)
-          | I (v, expr) -> (Ob.A ("-I " ^ v)) :: ocamlc (Expr expr)
-          | End -> []
-          | Trap (trap, expr, exprs) -> (trap expr) @ (ocamlc (Expr exprs))
-          | _ -> raise Not_found
-        end
-    )
 
-  let rec ocamlc_ext = Ocamlc.(function Expr expr ->
-    begin match expr with
-      | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext (Expr rest)
-      | End -> []
-      | _ -> raise Not_found
-    end)
+  (* let rec ocamlc_ext = Ocamlc.(function Expr expr -> *)
+  (*   begin match expr with *)
+  (*     | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext (Expr rest) *)
+  (*     | End -> [] *)
+  (*     | _ -> raise Not_found *)
+  (*   end) *)
 
-  let dsl_main = Ocamlc.(
-      ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End))))
-    )
+  (* let dsl_main = Ocamlc.( *)
+  (*     ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))) *)
+  (*   ) *)
+
+  (* let ls_dir dir = *)
+  (*   let open File in *)
+  (*   let all_files = *)
+  (*     try Sys.readdir dir |> Array.to_list *)
+  (*     with _ -> [] *)
+  (*   in *)
+  (*   List.filter_map all_files ~f:(fun path -> *)
+  (*       match extension path with *)
+  (*       | ".mli" -> Some (Intf (Mli.of_path (dir ^ "/" ^ path))) *)
+  (*       (1* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *1) *)
+  (*       | _ -> None *)
+  (*     ) *)
+
+  module Build = struct
+    module T = Typ ()
+
+    type _ expr +=
+      | Rule : 'a File.T.t expr * 'b File.T.t expr * eexpr -> unit T.t expr
+      | End : unit T.t expr
+  end
+
+  module Tools = struct
+    type _ expr +=
+      | Ocamlc : eexpr * 'a expr -> (eexpr * eexpr) expr
+      | End : unit expr
+
+    let rec to_cmds = function Expr expr -> (match expr with
+        | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs))
+        | End -> []
+        | _ -> raise Not_found
+      )
+
+    let to_seq expr = Ob.Seq (to_cmds expr)
+  end
+
+  let compile_mli mli_file =
+    let open File in
+    let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
+    let deps = Mli (mli_file, End) in
+    let prods = Cmi (cmi_file, End) in
+    let cmds =
+      (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), End))), End))
+      (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
+    in
+    (Build.Rule (deps, prods, Expr cmds))
+
+  let lib = compile_mli
 end
 
 
 
-(*   let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in *)
 
 (* let to_command spec files = *)
 (*   let open Util.Spec in *)
@@ -184,19 +242,6 @@ end
 (*   @[List.map files ~f:(fun file -> Some (A file))] *)
 (*   |> specs_to_command *)
 
-
-(* let ls_dir dir = *)
-(*   let open File in *)
-(*   let all_files = *)
-(*     try Sys.readdir dir |> Array.to_list *)
-(*     with _ -> [] *)
-(*   in *)
-(*   List.filter_map all_files ~f:(fun path -> *)
-(*       match extension path with *)
-(*       | ".mli" -> Some (Intf (Mli.of_path (dir ^ "/" ^ path))) *)
-(*       (1* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *1) *)
-(*       | _ -> None *)
-(*     ) *)
 
 
   (* let open Ocamlfind in *)
