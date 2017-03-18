@@ -118,7 +118,7 @@ module Build_ocaml = struct
       | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr
 
     let rec to_spec = function Expr expr -> (match expr with
-        | O (fl, expr) -> (Ob.A ("-o " ^ fl)) :: to_spec (Expr expr)
+        | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec (Expr expr)
         | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr)
         | Version expr -> (Ob.A "--version") :: to_spec (Expr expr)
         | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr)
@@ -127,7 +127,7 @@ module Build_ocaml = struct
         | _ -> raise (Fwhale "Unknown ocamlc flag.")
       )
 
-    let to_cmd expr = Ob.(Cmd (S (to_spec expr)))
+    let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr))))
   end
 
   (* module Ocamlopt = struct *)
@@ -167,7 +167,7 @@ module Build_ocaml = struct
     in
     let files = List.filter_map all_files ~f:(fun path ->
         match extension path with
-        | ".mli" -> Some path
+        | ".mli" -> Some (dir ^ "/" ^ path)
         (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
         | _ -> None
       )
@@ -183,9 +183,11 @@ module Build_ocaml = struct
 
 
   module Tools = struct
+    module T = Typ ()
+
     type _ expr +=
-      | Ocamlc : eexpr * 'a expr -> (eexpr * eexpr) expr
-      | End : unit expr
+      | Ocamlc : eexpr * 'a T.t expr -> (eexpr * eexpr) expr
+      | End : unit T.t expr
 
     let rec to_cmds = function Expr expr -> (match expr with
         | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs))
@@ -250,7 +252,7 @@ module Build_ocaml = struct
       let prods = Cmi (cmi_file, End) in
       let open Build in
       let cmds =
-        (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), End))
+        (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), Tools.End))
         (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
       in
       Build.Rule ({deps; prods; cmds = Expr cmds}, End)
