@@ -124,7 +124,7 @@ module Build_ocaml = struct
         | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr)
         | End -> []
         | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs))
-        | _ -> raise Not_found
+        | _ -> raise (Fwhale "Unknown ocamlc flag.")
       )
 
     let to_cmd expr = Ob.(Cmd (S (to_spec expr)))
@@ -190,7 +190,7 @@ module Build_ocaml = struct
     let rec to_cmds = function Expr expr -> (match expr with
         | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs))
         | End -> []
-        | _ -> raise Not_found
+        | _ -> raise (Fwhale "Expected tool.")
       )
 
     let to_seq expr = Ob.Seq (to_cmds expr)
@@ -213,12 +213,13 @@ module Build_ocaml = struct
     let rec install = function Expr expr -> (match expr with
         | Rule ({deps; prods; cmds}, rule) ->
           Rule.rule ~deps:(File.to_string (Expr deps)) ~prods:(File.to_string (Expr prods)) (fun _ _ ->
+              print_endline ("INSTALL " ^ (String.concat ~sep:" " (File.to_string (Expr prods))));
               Tools.to_seq cmds
             );
           install (Expr rule)
         | End -> ()
         (* | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
-        | _ -> raise Not_found
+        | _ -> raise (Fwhale "Expected Rule, or trap, got something else.")
       )
 
     let install_rules expr =
@@ -238,48 +239,67 @@ module Build_ocaml = struct
     type _ expr +=
       | Compiled_intf : 'a Build.T.t expr * eexpr -> 'a Build.T.t expr
       | End : unit T.t expr
+
+    (* let build_artifact = function Expr expr -> (match expr with *)
+    (*     | Compiled_intf ( *)
+
+    let compile_mli mli_file =
+      let open File in
+      let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
+      let deps = Mli (mli_file, End) in
+      let prods = Cmi (cmi_file, End) in
+      let open Build in
+      let cmds =
+        (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), End))
+        (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
+      in
+      Build.Rule ({deps; prods; cmds = Expr cmds}, End)
   end
 
-  let compile_mli mli_file =
-    let open File in
-    let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
-    let deps = Mli (mli_file, End) in
-    let prods = Cmi (cmi_file, End) in
-    let open Build in
-    let cmds =
-      (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), End))
-      (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
-    in
-    Build.Rule ({deps; prods; cmds = Expr cmds}, End)
+  type _ expr +=
+      | Ret : eexpr expr
+
+  type exn += F_whale of eexpr
 
   let rec build_lib = function Expr expr -> (match expr with
-      | File.Mli (f, expr) -> (Expr (Artifact.Compiled_intf (compile_mli f, build_lib (Expr expr))))
-      (* | Artifact.Compiled_intf (rule, expr) -> (rule, build_lib expr *)
+      | File.Mli (f, expr) -> (Expr (Artifact.(Compiled_intf (compile_mli f, Expr expr))))
+      | Artifact.Compiled_intf (rule, expr) -> Build.install (Expr rule); build_lib expr
       (* | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs)) *)
-      | File.End -> (Expr Artifact.End)
-      | _ -> raise (Fwhale "Build failed.")
+      | File.End -> (Expr Ret)
+      (* | Artifact.End -> (Expr Artifact.End) *)
+      | x -> raise (F_whale (Expr x))
     )
 
-  let wrap expr = Expr expr
+  let is_ret = function Expr expr -> (match expr with
+      | Ret  -> true
+      | _ -> false
+    )
 
-  let lib ~dir =
-    ls_dir dir |>
-    build_lib
-    (* Build.install_rules *)
 
-  (*   compile_mli "" |> Build.install_rules *)
+
 
   (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
   (*       Use a graph to keep track of circular dependecies at each recursion. *)
-  (* let rec build *)
-  (*     ?(is_target=(List.for_all ~f:is_rule)) *)
-  (*     ?(init=[]) *)
-  (*     ~f *)
-  (*     deps *)
-  (*   = *)
-  (*   if (is_target deps) then deps *)
-  (*   else build ~is_target ~f (List.fold_left ~init ~f deps) *)
+  let rec build
+      ~f
+      expr
+    =
+    if (is_ret expr) then expr
+    else build ~f (f expr)
 
+
+  let lib ~dir =
+    Ocamlbuild_plugin.dispatch @@ function
+    | Ocamlbuild_plugin.After_rules -> (
+
+        Ocamlbuild_plugin.clear_rules();
+
+        ignore (
+          ls_dir dir |>
+          build ~f:build_lib
+        )
+      )
+    | _ -> ()
 end
 
 
