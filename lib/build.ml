@@ -106,7 +106,8 @@ module Build_ocaml = struct
 
   module Typ2 () = struct
     type 'a a
-    type 'a t = 'a a
+    (* type 'a t = 'a a *)
+    type 'a t = Texpr : 'a expr -> 'a t
   end
 
 
@@ -119,28 +120,29 @@ module Build_ocaml = struct
 
   (* end *)
 
-  type 'a eexpr2 = Eexpr : 'b expr -> 'a eexpr2
+  type _ eexpr2 = Eexpr : 'b expr -> 'a eexpr2
 
-  type _ expr +=
-    | X : 'a expr -> 'a expr
-    | Ret : eexpr expr
 
+  (* type _ expr2 = X : 'a expr -> 'a eexpr2 expr2 *)
+
+  (* type _ expr += *)
+  (*   (1* | X : 'a expr -> 'a eexpr2 expr *1) *)
+  (*   | Ret : eexpr expr *)
 
   module Ocamlc = struct
     module T = Typ2 ()
-
-    type t
+    (* type 'a t = 'a T.t *)
 
     type _ expr +=
-      | O : string * t eexpr2 -> t eexpr2 expr
+      | O : string * 'a T.t T.t -> 'a T.t expr
       (* | O : string * 'a T.t expr -> string T.t expr *)
-      (* | I : string * 'a T.t expr -> string T.t expr *)
+      | I : string * 'a T.t T.t -> 'a T.t expr
       (* | Version : 'a T.t expr -> unit T.t expr *)
-      (* | End : unit T.t expr *)
+      | Ret : 'a T.t expr
       (* | Pos : string * 'a T.t expr -> string T.t expr *)
       (* | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr *)
 
-    let rec to_spec = function Eexpr x -> (match x with
+    let rec to_spec = function T.Texpr x -> (match x with
         | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec expr
         (* | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr) *)
         (* | Version expr -> (Ob.A "--version") :: to_spec (Expr expr) *)
@@ -153,11 +155,25 @@ module Build_ocaml = struct
     (* let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr)))) *)
   end
 
+  module Ocamlopt = struct
+    module T = Typ2 ()
+
+    type _ expr +=
+      | O : string * 'a T.t T.t -> 'a T.t expr
+      | I : string * 'a T.t T.t -> 'a T.t expr
+      | Ret : 'a T.t expr
+
+    (* let rec to_spec = function Te x -> (match x with *)
+    (*     | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec expr *)
+    (*     | _ -> raise (Fwhale "Unknown ocamlc flag.") *)
+      (* ) *)
+  end
+
 
   let test =
     (* let open Expr in *)
     let open Ocamlc in
-    (X (O ("f.out", X (I "p/ath", Ret))))
+    (T.Texpr (O ("f.out", T.Texpr (I ("p/ath", T.Texpr Ret)))))
 
   (* module Ocamlopt = struct *)
   (*   module T = Typ () *)
