@@ -23,6 +23,7 @@ module Dsl = struct
 
   type eexpr = Expr : 'a expr -> eexpr
 
+  type ('a, 'b, 'c) ext = ('a expr -> 'b) * 'a expr * 'c
 
   (* Non-unifying type minter. *)
   module Typ () = struct
@@ -104,62 +105,31 @@ module Build_ocaml = struct
       )
   end
 
-  module Proc (Ret : sig type t end) = struct
-    type t
-
-    type _ expr +=
-      | Ret : t expr
-      | Trap : (eexpr -> Ret.t) * eexpr * t expr -> t expr
-      | Ptrap : Ret.t * t expr -> t expr
-
-
-    let trap f = function
-      | Trap (trap, expr, exprs) -> f (Ptrap (trap expr, exprs))
-      | a -> f a
-
-  end
-
-
-  (* module Expr = struct *)
-  (*   module T = Typ2 () *)
-
-  (*   (1* type 'b teexpr = Tx : 'a expr -> 'b teexpr *1) *)
-
-  (*   type ('a, 'b) x = 'a * 'b expr *)
-
-  (* end *)
-
-  type _ eexpr2 = Eexpr : 'b expr -> 'a eexpr2
-
-
-  (* type _ expr2 = X : 'a expr -> 'a eexpr2 expr2 *)
-
-  (* type _ expr += *)
-  (*   (1* | X : 'a expr -> 'a eexpr2 expr *1) *)
-  (*   | Ret : eexpr expr *)
 
   module Ocamlc = struct
-    include (Proc (struct type t = Ob.spec list end))
+    (* include (Proc (struct type t = Ob.spec list end)) *)
 
-    type _ expr +=
-      | O : string * t expr -> t expr
+    type t =
+      | O : string * t -> t
       (* | O : string * 'a T.t expr -> string T.t expr *)
-      | I : string * t expr -> t expr
+      | I : string * t -> t
+      | Ext : ('a, Ob.spec list, t) ext -> t
       (* | Version : 'a T.t expr -> unit T.t expr *)
       (* | Pos : string * 'a T.t expr -> string T.t expr *)
 
-    let rec to_spec = trap (function
-        | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec expr
+    let rec to_spec = function
+        | O (x, xs) -> Ob.([A "-o"; A x]) @ to_spec xs
+        | I (x, xs) -> Ob.([A "-I"; A x]) @ to_spec xs
         (* | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr) *)
         (* | Version expr -> (Ob.A "--version") :: to_spec (Expr expr) *)
         (* | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr) *)
         (* | End -> [] *)
-        (* | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
-        | Ptrap (spec, expr) -> spec @ to_spec expr
-        | _ -> raise (Fwhale "Unknown ocamlc flag.")
-      )
+        | Ext (f, x, xs) -> f x  @ to_spec xs
+        (* | Ptrap (spec, expr) -> spec @ to_spec expr *)
+        (* | _ -> raise (Fwhale "Unknown ocamlc flag.") *)
+        (* | _ -> . *)
 
-    (* let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr)))) *)
+    let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr))))
   end
 
   module Ocamlopt = struct
