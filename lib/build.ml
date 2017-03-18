@@ -30,17 +30,16 @@ module Dsl = struct
     type 'a t = 'a a
   end
 
+  (* XXX Traps may need to take eexpr, but nothing else? *)
+
   module Kern = struct
     type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b
   end
-
-  (* Traps may need to take eexpr, but nothing else? *)
 end
 
 
 module Build = struct
   include Dsl
-
 end
 
 
@@ -105,30 +104,60 @@ module Build_ocaml = struct
       )
   end
 
+  module Typ2 () = struct
+    type 'a a
+    type 'a t = 'a a
+  end
+
+
+  (* module Expr = struct *)
+  (*   module T = Typ2 () *)
+
+  (*   (1* type 'b teexpr = Tx : 'a expr -> 'b teexpr *1) *)
+
+  (*   type ('a, 'b) x = 'a * 'b expr *)
+
+  (* end *)
+
+  type 'a eexpr2 = Eexpr : 'b expr -> 'a eexpr2
+
+  type _ expr +=
+    | X : 'a expr -> 'a expr
+    | Ret : eexpr expr
+
 
   module Ocamlc = struct
-    module T = Typ ()
+    module T = Typ2 ()
+
+    type t
 
     type _ expr +=
-      | O : string * 'a T.t expr -> string T.t expr
-      | I : string * 'a T.t expr -> string T.t expr
-      | Version : 'a T.t expr -> unit T.t expr
-      | End : unit T.t expr
-      | Pos : string * 'a T.t expr -> string T.t expr
-      | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr
+      | O : string * t eexpr2 -> t eexpr2 expr
+      (* | O : string * 'a T.t expr -> string T.t expr *)
+      (* | I : string * 'a T.t expr -> string T.t expr *)
+      (* | Version : 'a T.t expr -> unit T.t expr *)
+      (* | End : unit T.t expr *)
+      (* | Pos : string * 'a T.t expr -> string T.t expr *)
+      (* | Trap : (Ob.spec list, 'a T.t expr) Kern.trap -> eexpr T.t expr *)
 
-    let rec to_spec = function Expr expr -> (match expr with
-        | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec (Expr expr)
-        | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr)
-        | Version expr -> (Ob.A "--version") :: to_spec (Expr expr)
-        | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr)
-        | End -> []
-        | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs))
+    let rec to_spec = function Eexpr x -> (match x with
+        | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec expr
+        (* | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr) *)
+        (* | Version expr -> (Ob.A "--version") :: to_spec (Expr expr) *)
+        (* | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr) *)
+        (* | End -> [] *)
+        (* | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
         | _ -> raise (Fwhale "Unknown ocamlc flag.")
       )
 
-    let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr))))
+    (* let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr)))) *)
   end
+
+
+  let test =
+    (* let open Expr in *)
+    let open Ocamlc in
+    (X (O ("f.out", X (I "p/ath", Ret))))
 
   (* module Ocamlopt = struct *)
   (*   module T = Typ () *)
@@ -257,6 +286,9 @@ module Build_ocaml = struct
       in
       Build.Rule ({deps; prods; cmds = Expr cmds}, End)
   end
+
+
+
 
   type _ expr +=
       | Ret : eexpr expr
