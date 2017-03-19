@@ -31,11 +31,38 @@ module Dsl = struct
     type 'a t = 'a a
   end
 
-  (* XXX Traps may need to take eexpr, but nothing else? *)
-
   module Kern = struct
     type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b
   end
+
+  type ('a, 'b) trap = 'b -> 'a expr -> 'b
+  type ('a, 'b) proc = ('a, 'b) trap -> 'b -> 'a expr -> 'b
+
+  let ktrap = raise (F_whale "Unknown expression.")
+
+
+  let rec create_kern trap = function
+    | (proc :: procs) -> create_kern (proc trap) procs
+    | [] -> trap
+
+
+  let step kern data =
+    List.fold_left ~f:kern ~init:data
+
+
+  let rec run kern stop data code =
+    if stop data code then data
+    else run kern stop (step kern data code) code
+
+
+  let rec run_self kern stop dfd =
+    if stop dfd then dfd
+    else run_self kern stop (step kern dfd dfd)
+
+
+  (* let test = *)
+  (*   let open Ocamlc in *)
+  (*   step [Ocamlc_ext.to_spec; Ocamlc.to_spec] [O "f.out"; I "p/ath"] *)
 end
 
 
@@ -91,26 +118,18 @@ module Build_ocaml = struct
     module A = Make(struct let ext = ".a" end)
     module Dll = Make(struct let ext = ".so" end)
 
-    module T = Dsl.Typ ()
-    type _ expr +=
-      | Cmi : Cmi.t * 'a T.t expr -> eexpr T.t expr
-      | Mli : Mli.t * 'a T.t expr -> eexpr T.t expr
-      | End : eexpr T.t expr
+    type t = ..
+    type t +=
+      | Cmi : Cmi.t -> t
+      | Mli : Mli.t -> t
 
-    let rec to_string = function Expr expr -> (match expr with
-        | Cmi (f, fs) -> (Cmi.path f) :: to_string (Expr fs)
-        | Mli (f, fs) -> (Mli.path f) :: to_string (Expr fs)
-        | End -> []
-        | _ -> raise (F_whale "Uknonwn file type.")
-      )
+    let to_string trap acc = function
+        | Cmi f -> (Cmi.path f) :: acc
+        | Mli f -> (Mli.path f) :: acc
+        | a -> trap acc a
   end
 
-
-  type ('a, 'b) trap = 'b -> 'a expr -> 'b
-  type ('a, 'b) proc = ('a, 'b) trap -> 'b -> 'a expr -> 'b
-
   module Ocamlc = struct
-
     type t = ..
     type t +=
       | O : string -> t
@@ -135,20 +154,6 @@ module Build_ocaml = struct
     let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr))))
   end
 
-  let ktrap = raise (F_whale "Unknown expression.")
-
-  let rec make_kern trap = function
-    | (proc :: procs) -> make_kern (proc trap) procs
-    | [] -> trap
-
-  let run procs ~init =
-    let kern = make_kern ktrap procs in
-    List.fold_left ~init ~f:kern
-
-  let test =
-    let open Ocamlc in
-    run [Ocamlc_ext.to_spec; Ocamlc.to_spec] [O "f.out"; I "p/ath"]
-
 
   let ls_dir dir =
     let open File in
@@ -156,22 +161,12 @@ module Build_ocaml = struct
       try Sys.readdir dir |> Array.to_list
       with _ -> []
     in
-    let files = List.filter_map all_files ~f:(fun path ->
+    List.filter_map all_files ~f:(fun path ->
         match extension path with
-        | ".mli" -> Some (dir ^ "/" ^ path)
+        | ".mli" -> Some (File.Mli (Mli.of_path path))
         (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
         | _ -> None
       )
-    in
-    Expr (List.fold_left files ~init:(File.End) ~f:(fun acc path ->
-        match extension path with
-        | ".mli" -> File.Mli (Mli.of_path path, acc)
-        | _ -> assert false
-      ))
-
-
-
-
 
   module Tools = struct
     module T = Typ ()
@@ -183,7 +178,7 @@ module Build_ocaml = struct
     let rec to_cmds = function Expr expr -> (match expr with
         | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs))
         | End -> []
-        | _ -> raise (Fwhale "Expected tool.")
+        | _ -> raise (F_whale "Expected tool.")
       )
 
     let to_seq expr = Ob.Seq (to_cmds expr)
@@ -230,7 +225,6 @@ module Build_ocaml = struct
     module T = Typ ()
 
     type _ expr +=
-      | Compiled_intf : 'a Build.T.t expr * eexpr -> 'a Build.T.t expr
       | End : unit T.t expr
 
     (* let build_artifact = function Expr expr -> (match expr with *)
@@ -257,14 +251,26 @@ module Build_ocaml = struct
 
   type exn += F_whale of eexpr
 
-  let rec build_lib = function Expr expr -> (match expr with
-      | File.Mli (f, expr) -> (Expr (Artifact.(Compiled_intf (compile_mli f, Expr expr))))
-      | Artifact.Compiled_intf (rule, expr) -> Build.install (Expr rule); build_lib expr
-      (* | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs)) *)
-      | File.End -> (Expr Ret)
-      (* | Artifact.End -> (Expr Artifact.End) *)
-      | x -> raise (F_whale (Expr x))
-    )
+
+  module Lib = struct
+    type t = ..
+    type t +=
+      | Compiled_intf : ('a, 'b) Build.rule -> t
+
+    let build_files = File.(function
+        | Mli (f, expr) -> Compiled_intf (compile_mli f, Expr expr)
+      )
+
+    let rec build_lib = function Expr expr -> (match expr with
+        | Artifact.Compiled_intf (rule, expr) -> Build.install (Expr rule); build_lib expr
+        (* | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs)) *)
+        | File.End -> (Expr Ret)
+        (* | Artifact.End -> (Expr Artifact.End) *)
+        | x -> raise (F_whale (Expr x))
+      )
+
+    let ret
+  end
 
   let is_ret = function Expr expr -> (match expr with
       | Ret  -> true
@@ -274,14 +280,6 @@ module Build_ocaml = struct
 
 
 
-  (* TODO: Check for infinite recursion. Prods = deps will recurse infinitely. *)
-  (*       Use a graph to keep track of circular dependecies at each recursion. *)
-  let rec build
-      ~f
-      expr
-    =
-    if (is_ret expr) then expr
-    else build ~f (f expr)
 
 
   let lib ~dir =
@@ -292,7 +290,7 @@ module Build_ocaml = struct
 
         ignore (
           ls_dir dir |>
-          build ~f:build_lib
+          build ~f:Lib.build
         )
       )
     | _ -> ()
