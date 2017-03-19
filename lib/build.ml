@@ -16,7 +16,7 @@ open Util.Filename
  * Expressions and their relationships are defined by extending a single GADT type.
  **)
 module Dsl = struct
-  type exn += Fwhale of string
+  type exn += F_whale of string
 
   (* Extensible expression vocabulary. *)
   type _ expr = ..
@@ -101,83 +101,53 @@ module Build_ocaml = struct
         | Cmi (f, fs) -> (Cmi.path f) :: to_string (Expr fs)
         | Mli (f, fs) -> (Mli.path f) :: to_string (Expr fs)
         | End -> []
-        | _ -> raise (Fwhale "Uknonwn file type.")
+        | _ -> raise (F_whale "Uknonwn file type.")
       )
   end
 
 
+  type ('a, 'b) trap = 'b -> 'a expr -> 'b
+  type ('a, 'b) proc = ('a, 'b) trap -> 'b -> 'a expr -> 'b
+
   module Ocamlc = struct
-    (* include (Proc (struct type t = Ob.spec list end)) *)
 
-    type t =
-      | O : string * t -> t
-      (* | O : string * 'a T.t expr -> string T.t expr *)
-      | I : string * t -> t
-      | Ext : ('a, Ob.spec list, t) ext -> t
-      (* | Version : 'a T.t expr -> unit T.t expr *)
-      (* | Pos : string * 'a T.t expr -> string T.t expr *)
+    type t = ..
+    type t +=
+      | O : string -> t
+      | I : string -> t
 
-    let rec to_spec = function
-        | O (x, xs) -> Ob.([A "-o"; A x]) @ to_spec xs
-        | I (x, xs) -> Ob.([A "-I"; A x]) @ to_spec xs
-        (* | I (fl, expr) -> (Ob.A ("-I " ^ fl)) :: to_spec (Expr expr) *)
-        (* | Version expr -> (Ob.A "--version") :: to_spec (Expr expr) *)
-        (* | Pos (fl, expr) -> (Ob.A fl) :: to_spec (Expr expr) *)
-        (* | End -> [] *)
-        | Ext (f, x, xs) -> f x  @ to_spec xs
-        (* | Ptrap (spec, expr) -> spec @ to_spec expr *)
-        (* | _ -> raise (Fwhale "Unknown ocamlc flag.") *)
-        (* | _ -> . *)
+    let to_spec trap acc = function
+        | O v -> Ob.([A "-o"; A v]) @ acc
+        | I v -> Ob.([A "-I"; A v]) @ acc
+        | a -> trap acc a
 
-    let to_cmd expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec expr))))
+    let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr))))
   end
 
-  module Ocamlopt = struct
-    include (Proc ())
+  module Ocamlc_ext = struct
+    type Ocamlc.t +=
+      | Z : string -> Ocamlc.t
 
-    type _ expr +=
-      | O : string * t expr -> t expr
-      | I : string * t expr -> t expr
+    let to_spec trap acc = function
+        | Z v -> Ob.([A "-z"; A v]) @ acc
+        | a -> trap acc a
 
-    (* let rec to_spec = function Te x -> (match x with *)
-    (*     | O (fl, expr) -> Ob.([A "-o"; A fl]) @ to_spec expr *)
-    (*     | _ -> raise (Fwhale "Unknown ocamlc flag.") *)
-      (* ) *)
+    let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr))))
   end
 
+  let ktrap = raise (F_whale "Unknown expression.")
+
+  let rec make_kern trap = function
+    | (proc :: procs) -> make_kern (proc trap) procs
+    | [] -> trap
+
+  let run procs ~init =
+    let kern = make_kern ktrap procs in
+    List.fold_left ~init ~f:kern
 
   let test =
-    (* let open Expr in *)
     let open Ocamlc in
-    (O ("f.out", I ("p/ath", Ret)))
-
-  (* module Ocamlopt = struct *)
-  (*   module T = Typ () *)
-
-  (*   type _ expr += *)
-  (*     | I : string * 'a T.t expr -> string T.t expr *)
-  (*     | End : unit T.t expr *)
-  (* end *)
-
-
-
-  (* let rec ocamlc_ext = Ocamlc.(function Expr expr -> *)
-  (*   begin match expr with *)
-  (*     | I (s, rest) -> (Ob.A ("-I " ^ s)) :: ocamlc_ext (Expr rest) *)
-  (*     | End -> [] *)
-  (*     | _ -> raise Not_found *)
-  (*   end) *)
-
-  (* let dsl_main = Ocamlc.( *)
-  (*     ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))) *)
-  (*   ) *)
-
-  (* let rec filter_files = function Expr expr -> (match expr with *)
-  (*     | Mli (fl, expr) -> (Ob.A ("-o " ^ fl)) :: to_spec (Expr expr) *)
-  (*     | End -> [] *)
-  (*     | Trap (trap, expr, exprs) -> (trap expr) @ (to_spec (Expr exprs)) *)
-  (*     | _ -> raise Not_found *)
-  (*   ) *)
+    run [Ocamlc_ext.to_spec; Ocamlc.to_spec] [O "f.out"; I "p/ath"]
 
 
   let ls_dir dir =
