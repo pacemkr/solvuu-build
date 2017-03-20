@@ -31,9 +31,9 @@ module Dsl = struct
     type 'a t = 'a a
   end
 
-  module Kern = struct
-    type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b
-  end
+  (* module Kern = struct *)
+  (*   type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b *)
+  (* end *)
 
   type ('a, 'b) trap = 'b -> 'a expr -> 'b
   type ('a, 'b) proc = ('a, 'b) trap -> 'b -> 'a expr -> 'b
@@ -59,10 +59,11 @@ module Dsl = struct
     if stop dfd then dfd
     else run_self kern stop (step kern dfd dfd)
 
-
   (* let test = *)
   (*   let open Ocamlc in *)
   (*   step [Ocamlc_ext.to_spec; Ocamlc.to_spec] [O "f.out"; I "p/ath"] *)
+
+  (* Simulate 555 timer? *)
 end
 
 
@@ -127,6 +128,19 @@ module Build_ocaml = struct
         | Cmi f -> (Cmi.path f) :: acc
         | Mli f -> (Mli.path f) :: acc
         | a -> trap acc a
+
+    let ls_dir dir =
+      let open File in
+      let all_files =
+        try Sys.readdir dir |> Array.to_list
+        with _ -> []
+      in
+      List.filter_map all_files ~f:(fun path ->
+          match extension path with
+          | ".mli" -> Some (File.Mli (Mli.of_path path))
+          (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
+          | _ -> None
+        )
   end
 
   module Ocamlc = struct
@@ -135,62 +149,66 @@ module Build_ocaml = struct
       | O : string -> t
       | I : string -> t
 
-    let to_spec trap acc = function
+    let to_spec kern acc = function
         | O v -> Ob.([A "-o"; A v]) @ acc
         | I v -> Ob.([A "-I"; A v]) @ acc
-        | a -> trap acc a
+        | a -> kern acc a
 
-    let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr))))
+    let run kern expr =
+      Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ Dsl.step kern [] expr)))
   end
 
-  module Ocamlc_ext = struct
-    type Ocamlc.t +=
-      | Z : string -> Ocamlc.t
+  (* module Ocamlc_ext = struct *)
+  (*   type Ocamlc.t += *)
+  (*     | Z : string -> Ocamlc.t *)
 
-    let to_spec trap acc = function
-        | Z v -> Ob.([A "-z"; A v]) @ acc
+  (*   let to_spec trap acc = function *)
+  (*       | Z v -> Ob.([A "-z"; A v]) @ acc *)
+  (*       | a -> trap acc a *)
+
+  (*   let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr)))) *)
+  (* end *)
+
+
+
+
+
+
+  module Command = struct
+    type t = ..
+    type t +=
+      | Ocamlc : Ocamlc.t list -> t
+
+    let kern_of = function
+      | Ocamlc _ -> [ocamlc
+
+    let rec to_cmds kern acc = function
+        | Ocamlc xs as a -> (Ocamlc.to_cmd (kern_of a) xs) :: acc
         | a -> trap acc a
-
-    let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr))))
-  end
-
-
-  let ls_dir dir =
-    let open File in
-    let all_files =
-      try Sys.readdir dir |> Array.to_list
-      with _ -> []
-    in
-    List.filter_map all_files ~f:(fun path ->
-        match extension path with
-        | ".mli" -> Some (File.Mli (Mli.of_path path))
-        (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
-        | _ -> None
-      )
-
-  module Tools = struct
-    module T = Typ ()
-
-    type _ expr +=
-      | Ocamlc : eexpr * 'a T.t expr -> (eexpr * eexpr) expr
-      | End : unit T.t expr
-
-    let rec to_cmds = function Expr expr -> (match expr with
-        | Ocamlc (expr, exprs) -> (Ocamlc.to_cmd expr) :: (to_cmds (Expr exprs))
-        | End -> []
-        | _ -> raise (F_whale "Expected tool.")
       )
 
     let to_seq expr = Ob.Seq (to_cmds expr)
   end
 
+
+  module Kern = struct
+    (* type t = .. *)
+    (* type t += *)
+    (*   | Ocamlc : Ocamlc.proc list -> t *)
+
+    let lookup trap xs =
+      match xs with
+      | Ocamlc _ -> [Ocamlc.run]
+  end
+
+
   module Build = struct
     module T = Typ ()
 
-    type ('a, 'b) rule = {
-      deps : 'a File.T.t expr;
-      prods :  'b File.T.t expr;
-      cmds : eexpr;
+    type rule = {
+      deps : File.t list;
+      prods :  File.t list;
+      cmds : Command.t list;
     }
 
     type _ expr +=
@@ -221,45 +239,29 @@ module Build_ocaml = struct
   end
 
 
-  module Artifact = struct
-    module T = Typ ()
-
-    type _ expr +=
-      | End : unit T.t expr
-
-    (* let build_artifact = function Expr expr -> (match expr with *)
-    (*     | Compiled_intf ( *)
+  module Lib = struct
+    type t = ..
+    type t +=
+      | Compiled_intf : Build.rule -> t
 
     let compile_mli mli_file =
       let open File in
       let cmi_file = typ_conv (module Mli) (module Cmi) mli_file in
-      let deps = Mli (mli_file, End) in
-      let prods = Cmi (cmi_file, End) in
-      let open Build in
+      let deps = [Mli mli_file] in
+      let prods = [Cmi cmi_file] in
       let cmds =
         (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), Tools.End))
         (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
       in
-      Build.Rule ({deps; prods; cmds = Expr cmds}, End)
-  end
+      Build.Rule ({deps; prods; cmds}, End)
 
-
-
-
-  type _ expr +=
-      | Ret : eexpr expr
-
-  type exn += F_whale of eexpr
-
-
-  module Lib = struct
-    type t = ..
-    type t +=
-      | Compiled_intf : ('a, 'b) Build.rule -> t
-
-    let build_files = File.(function
-        | Mli (f, expr) -> Compiled_intf (compile_mli f, Expr expr)
+    let build_files trap acc = File.(function
+        | Mli f -> Compiled_intf (compile_mli f)
       )
+
+    let is_rule = function
+      | Build.Rule _ -> true
+      | _ -> false
 
     let rec build_lib = function Expr expr -> (match expr with
         | Artifact.Compiled_intf (rule, expr) -> Build.install (Expr rule); build_lib expr
@@ -269,13 +271,11 @@ module Build_ocaml = struct
         | x -> raise (F_whale (Expr x))
       )
 
-    let ret
-  end
+    (* let create files = *)
+    (*   Dsl.run_self kern files *)
 
-  let is_ret = function Expr expr -> (match expr with
-      | Ret  -> true
-      | _ -> false
-    )
+
+  end
 
 
 
@@ -290,7 +290,7 @@ module Build_ocaml = struct
 
         ignore (
           ls_dir dir |>
-          build ~f:Lib.build
+          Dsl.run_self Lib.kern Lib.stop
         )
       )
     | _ -> ()
