@@ -129,6 +129,7 @@ module Build_ocaml = struct
         | Mli f -> (Mli.path f) :: acc
         | a -> trap acc a
 
+    (*
     let ls_dir dir =
       let open File in
       let all_files =
@@ -141,15 +142,21 @@ module Build_ocaml = struct
           (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
           | _ -> None
         )
+       *)
   end
 
   module Tools = struct
-    module Compiler = struct
-      type t = ..
-      type t +=
-        | Version
-        | Verbose
-        | Fun : (Ob.spec list -> 'a -> Ob.spec list) * 'a -> t
+    type _ flg = ..
+
+    module Compiler () = struct
+      type a
+
+      type _ flg +=
+        | Version : a flg
+        | Verbose : a flg
+        | Fun : (Ob.spec list -> 'a -> Ob.spec list) * 'a -> a flg
+
+      type t = a flg
 
       let to_spec acc = function
         | Version ->  Ob.A "-version" :: acc
@@ -158,45 +165,55 @@ module Build_ocaml = struct
         | _ -> raise (F_whale "Unknown flag.")
     end
 
-    module Ocamlc = struct
-      include Compiler
 
-      type t +=
-        | O : string -> t
-        | I : string -> t
+    module Ocamlc = struct
+      include (Compiler ())
+
+      type _ flg +=
+        | O : string -> a flg
+        | I : string -> a flg
 
       let to_spec acc = function
         | O v -> Ob.([A "-o"; A v]) @ acc
         | I v -> Ob.([A "-I"; A v]) @ acc
-        | a -> Compiler.to_spec acc a
+        | a -> to_spec acc a
 
       let to_cmd expr =
         Ob.(Cmd (S ([A "ocamlc"] @ to_spec [] expr)))
     end
 
+
     module Ocamlfind = struct
-      type t =
-        | Package of string list
-        | Ocamlc of Ocamlc.t
+      include (Compiler ())
+
+      type _ flg +=
+        | Package : string list -> a flg
+        | Ocamlc : Ocamlc.t -> a flg
 
       let to_spec acc = function
         | Ocamlc a -> (Ob.A "ocamlc") :: Ocamlc.to_spec acc a
         | Package _ -> acc
+        | _ -> raise (F_whale "Unknown flag.")
 
       let to_cmd expr =
         Ob.(Cmd (S ([A "ocamlfind"] @ to_spec [] expr)))
     end
 
-    type t =
-      | Ocamlc of Ocamlc.t
-      | Ocamlfind of Ocamlfind.t
 
-    let to_cmd = function
-      | Ocamlc a -> Ocamlc.to_cmd a
-      | Ocamlfind a -> Ocamlfind.to_cmd a
+    (* type _ t += *)
+    (*   | Ocamlc : *)
+    (*   | Ocamlfind of Ocamlfind.t *)
+
+    (* let to_cmd = function *)
+    (*   | Ocamlc a -> Ocamlc.to_cmd a *)
+    (*   | Ocamlfind a -> Ocamlfind.to_cmd a *)
   end
 
 
+  let test =
+    Tools.(Ocamlc.([O "test.out"; I "p/ath"]))
+
+(*
   module Build = struct
     module T = Typ ()
 
@@ -289,6 +306,7 @@ module Build_ocaml = struct
         )
       )
     | _ -> ()
+           *)
 end
 
 
