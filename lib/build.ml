@@ -178,6 +178,13 @@ module Build_ocaml = struct
 
     module L = Lang ()
 
+    module Spec_list = struct
+      type t = Ob.spec list
+    end
+
+    module Cmd_list = struct
+      type t = Ob.spec list
+    end
 
     module Tool = struct
       (* include L.Extension(struct *)
@@ -190,9 +197,7 @@ module Build_ocaml = struct
 
 
     module Compiler () = struct
-      include (L.Typ(struct
-          type t = Ob.spec list
-        end) ())
+      include (L.Typ (Spec_list) ())
 
       include Tool
 
@@ -239,10 +244,7 @@ module Build_ocaml = struct
     end
 
     module Ocamlfind = struct
-
-      include (L.Typ(struct
-          type t = Ob.spec list
-        end) ())
+      include (L.Typ (Cmd_list) ())
 
       include Tool
 
