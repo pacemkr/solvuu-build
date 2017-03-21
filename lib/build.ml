@@ -153,11 +153,12 @@ module Build_ocaml = struct
 
       type eexpr = Expr : 'a expr -> eexpr
 
-      module Typ (Typ : sig type t end) () = struct
+      module type T = sig type t end
+      module Typ (T : T) () = struct
         type t
 
         type _ expr +=
-          | Ext : ('a expr -> Typ.t) * 'a expr -> t expr
+          | Ext : ('a expr -> T.t) * 'a expr -> t expr
 
         let ext = function
           | Ext (f, a) -> f a
@@ -183,13 +184,11 @@ module Build_ocaml = struct
     end
 
     module Cmd_list = struct
-      type t = Ob.spec list
+      type t = Ob.command list
     end
 
-    module Tool = struct
-      (* include L.Extension(struct *)
-      (*     type t = Ob.spec list *)
-      (*   end) *)
+    module Tool (T : L.T) () = struct
+      include (L.Typ (T) ())
 
       let to_bin_specs bin f flags =
         Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
@@ -197,9 +196,7 @@ module Build_ocaml = struct
 
 
     module Compiler () = struct
-      include (L.Typ (Spec_list) ())
-
-      include Tool
+      include (Tool (Spec_list) ())
 
       type _ L.expr +=
         | Version : t L.expr
@@ -244,9 +241,7 @@ module Build_ocaml = struct
     end
 
     module Ocamlfind = struct
-      include (L.Typ (Cmd_list) ())
-
-      include Tool
+      include (Tool (Spec_list) ())
 
       type _ L.expr +=
         | Package : string list -> t L.expr
