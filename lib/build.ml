@@ -154,11 +154,13 @@ module Build_ocaml = struct
       type eexpr = Expr : 'a expr -> eexpr
 
       module Extension (Typ : sig type t end) = struct
-        type _ expr +=
-          | Ext : (Typ.t -> 'a expr -> Typ.t) * 'a expr -> Typ.t expr
+        type t
 
-        let trap acc = function
-          | Ext (f, a) -> f acc a
+        type _ expr +=
+          | Ext : ('a expr -> Typ.t) * 'a expr -> t expr
+
+        let trap = function
+          | Ext (f, a) -> f a
           | _ -> raise (F_whale "Unknown expression.")
       end
     end
@@ -177,15 +179,10 @@ module Build_ocaml = struct
     module L = Lang ()
 
 
-    module Spec_typ () = struct
-      type t = Ob.spec list
-    end
-
-    module Tool = struct
-      module T = Spec_typ ()
-      include L.Extension(T)
-
-      type t = T.t
+    module Tool () = struct
+      include L.Extension(struct
+          type t = Ob.spec list
+        end)
 
       let to_bin_specs bin f flags =
         Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
@@ -193,7 +190,7 @@ module Build_ocaml = struct
 
 
     module Compiler = struct
-      include Tool
+      include Tool ()
 
       type _ L.expr +=
         | Version : t L.expr
@@ -202,7 +199,7 @@ module Build_ocaml = struct
       let to_specs acc = function
         | Version ->  Ob.A "-version" :: acc
         | Verbose ->  Ob.A "-verbose" :: acc
-        | a -> trap acc a
+        | a -> trap a @ acc
     end
 
 
@@ -223,7 +220,7 @@ module Build_ocaml = struct
 
 
     module Ocamlfind = struct
-      include Tool
+      include Tool ()
 
       type _ L.expr +=
         | Package : string list -> t L.expr
@@ -233,7 +230,7 @@ module Build_ocaml = struct
         to_bin_specs "ocamlfind" (fun acc -> function
             | Ocamlc a -> Ocamlc.to_specs a @ acc
             | Package _ -> acc
-            | a -> trap acc a
+            | a -> trap a @ acc
           )
     end
 
@@ -245,8 +242,6 @@ module Build_ocaml = struct
 
       include L.Extension(Typ)
 
-      type t = Typ.t
-
       type _ L.expr +=
         | Ocamlc : Ocamlc.t L.expr list -> t L.expr
         | Ocamlfind : Ocamlfind.t L.expr list -> t L.expr
@@ -255,7 +250,7 @@ module Build_ocaml = struct
       let to_cmds acc = function
         | Ocamlc a -> Ob.Cmd (Ob.S (Ocamlc.to_specs a)) :: acc
         | Ocamlfind a -> Ob.Cmd (Ob.S (Ocamlfind.to_specs a)) :: acc
-        | a -> trap acc a
+        | a -> trap a @ acc
 
 
       let to_seq t = Ob.Seq (List.fold_left ~init:[] ~f:to_cmds t)
