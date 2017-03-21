@@ -143,62 +143,57 @@ module Build_ocaml = struct
         )
   end
 
-  module Ocamlc = struct
-    type t = ..
-    type t +=
-      | O : string -> t
-      | I : string -> t
+  module Tools = struct
+    module Compiler = struct
+      type t = ..
+      type t +=
+        | Version
+        | Verbose
+        | Fun : (Ob.spec list -> 'a -> Ob.spec list) * 'a -> t
 
-    let to_spec kern acc = function
+      let to_spec acc = function
+        | Version ->  Ob.A "-version" :: acc
+        | Verbose ->  Ob.A "-verbose" :: acc
+        | Fun (f, arg) -> f acc arg
+        | _ -> raise (F_whale "Unknown flag.")
+    end
+
+    module Ocamlc = struct
+      include Compiler
+
+      type t +=
+        | O : string -> t
+        | I : string -> t
+
+      let to_spec acc = function
         | O v -> Ob.([A "-o"; A v]) @ acc
         | I v -> Ob.([A "-I"; A v]) @ acc
-        | a -> kern acc a
+        | a -> Compiler.to_spec acc a
 
-    let run kern expr =
-      Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ Dsl.step kern [] expr)))
-  end
+      let to_cmd expr =
+        Ob.(Cmd (S ([A "ocamlc"] @ to_spec [] expr)))
+    end
 
-  (* module Ocamlc_ext = struct *)
-  (*   type Ocamlc.t += *)
-  (*     | Z : string -> Ocamlc.t *)
+    module Ocamlfind = struct
+      type t =
+        | Package of string list
+        | Ocamlc of Ocamlc.t
 
-  (*   let to_spec trap acc = function *)
-  (*       | Z v -> Ob.([A "-z"; A v]) @ acc *)
-  (*       | a -> trap acc a *)
+      let to_spec acc = function
+        | Ocamlc a -> (Ob.A "ocamlc") :: Ocamlc.to_spec acc a
+        | Package _ -> acc
 
-  (*   let to_cmd trap expr = Ob.(Cmd (S ([A "ocamlfind"; A "ocamlc"] @ (to_spec trap [] expr)))) *)
-  (* end *)
+      let to_cmd expr =
+        Ob.(Cmd (S ([A "ocamlfind"] @ to_spec [] expr)))
+    end
 
+    type t =
+      | Ocamlc of Ocamlc.t
+      | Ocamlfind of Ocamlfind.t
 
-
-
-
-
-  module Command = struct
-    type t = ..
-    type t +=
-      | Ocamlc : Ocamlc.t list -> t
-
-    let kern_of = function
-      | Ocamlc _ -> [ocamlc
-
-    let rec to_cmds kern acc = function
-        | Ocamlc xs as a -> (Ocamlc.to_cmd (kern_of a) xs) :: acc
-        | a -> trap acc a
-      )
-
-    let to_seq expr = Ob.Seq (to_cmds expr)
-  end
-
-
-  module Kern = struct
-    (* type t = .. *)
-    (* type t += *)
-    (*   | Ocamlc : Ocamlc.proc list -> t *)
-
-    let lookup trap xs =
-      match xs with
-      | Ocamlc _ -> [Ocamlc.run]
+    let to_cmd = function
+      | Ocamlc a -> Ocamlc.to_cmd a
+      | Ocamlfind a -> Ocamlfind.to_cmd a
   end
 
 
