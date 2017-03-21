@@ -146,72 +146,68 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
-    type _ flg = ..
-
-    module Compiler () = struct
-      type a
-
-      type _ flg +=
-        | Version : a flg
-        | Verbose : a flg
-        | Fun : (Ob.spec list -> 'a -> Ob.spec list) * 'a -> a flg
-
-      type t = a flg
+    module Compiler = struct
+      type t = ..
+      type t +=
+        | Version
+        | Verbose
+        | Lazy : (Ob.spec list -> 'a -> Ob.spec list) * 'a -> t
 
       let to_spec acc = function
         | Version ->  Ob.A "-version" :: acc
         | Verbose ->  Ob.A "-verbose" :: acc
-        | Fun (f, arg) -> f acc arg
+        | Lazy (f, arg) -> f acc arg
         | _ -> raise (F_whale "Unknown flag.")
     end
 
 
+    let bin_spec bin f flags =
+      Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
+
+
     module Ocamlc = struct
-      include (Compiler ())
+      include Compiler
 
-      type _ flg +=
-        | O : string -> a flg
-        | I : string -> a flg
+      type t +=
+        | O of string
+        | I of string
 
-      let to_spec acc = function
-        | O v -> Ob.([A "-o"; A v]) @ acc
-        | I v -> Ob.([A "-I"; A v]) @ acc
-        | a -> to_spec acc a
-
-      let to_cmd expr =
-        Ob.(Cmd (S ([A "ocamlc"] @ to_spec [] expr)))
+      let to_spec =
+        bin_spec "ocamlc" (fun acc -> function
+            | O v -> Ob.([A "-o"; A v]) @ acc
+            | I v -> Ob.([A "-I"; A v]) @ acc
+            | a -> Compiler.to_spec acc a
+          )
     end
 
 
     module Ocamlfind = struct
-      include (Compiler ())
+      type t =
+        | Package of string list
+        | Ocamlc of Ocamlc.t list
 
-      type _ flg +=
-        | Package : string list -> a flg
-        | Ocamlc : Ocamlc.t -> a flg
-
-      let to_spec acc = function
-        | Ocamlc a -> (Ob.A "ocamlc") :: Ocamlc.to_spec acc a
-        | Package _ -> acc
-        | _ -> raise (F_whale "Unknown flag.")
-
-      let to_cmd expr =
-        Ob.(Cmd (S ([A "ocamlfind"] @ to_spec [] expr)))
+      let to_spec =
+        bin_spec "ocamlfind" (fun acc -> function
+            | Ocamlc a -> Ocamlc.to_spec a
+            | Package _ -> acc
+          )
     end
 
 
-    (* type _ t += *)
-    (*   | Ocamlc : *)
-    (*   | Ocamlfind of Ocamlfind.t *)
+    type t =
+      | Ocamlc of Ocamlc.t list
+      | Ocamlfind of Ocamlfind.t list
 
-    (* let to_cmd = function *)
-    (*   | Ocamlc a -> Ocamlc.to_cmd a *)
-    (*   | Ocamlfind a -> Ocamlfind.to_cmd a *)
+    let to_cmd t =
+      Ob.(Cmd (S (match t with
+          | Ocamlc a -> Ocamlc.to_spec a
+          | Ocamlfind a -> Ocamlfind.to_spec a
+        )))
   end
 
 
   let test =
-    Tools.(Ocamlc.([O "test.out"; I "p/ath"]))
+    Tools.(Ocamlc Ocamlc.([O "test.out"; I "p/ath"]))
 
 (*
   module Build = struct
