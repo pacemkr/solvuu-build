@@ -306,11 +306,21 @@ module Build_ocaml = struct
 
 
   (* Extension *)
+  module Ocamlc_ext = struct
+    open Tools
+
+    type _ L.expr +=
+      | Z : Ocamlc.t L.expr
+
+    let to_spec = function
+      | Z -> [Ob.A "-z"]
+      | _ -> raise Not_found
+  end
 
 
   let test =
     let open Tools.Build in
-    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Tools.Ocamlopt.O ""])]
+    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Ext (Ocamlc_ext.to_spec, Ocamlc_ext.Z)])]
 
 
 (*
