@@ -158,12 +158,15 @@ module Build_ocaml = struct
         type t
 
         type _ expr +=
-          | Ext : ('a expr -> T.t) * 'a expr -> t expr
+          Ext : ('a expr -> T.t) * 'a expr -> t expr
 
         let ext = function
           | Ext (f, a) -> f a
           | _ -> raise (F_whale "Unknown expression.")
+
+        let ext2 f a = Ext (f, a)
       end
+
     end
 
 
@@ -188,7 +191,9 @@ module Build_ocaml = struct
     end
 
     module Tool (T : L.T) () = struct
-      include (L.Typ (T) ())
+      module T = L.Typ (T) ()
+      include T
+
 
       let to_bin_specs bin f flags =
         Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
@@ -309,6 +314,8 @@ module Build_ocaml = struct
   module Ocamlc_ext = struct
     open Tools
 
+    module T = Ocamlc.T
+
     type t
     type _ L.expr +=
       | Z : t L.expr
@@ -316,12 +323,14 @@ module Build_ocaml = struct
     let to_spec = function
       | Z -> [Ob.A "-z"]
       | _ -> raise Not_found
+
+    let ext = T.ext2 to_spec
   end
 
 
   let test =
     let open Tools.Build in
-    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Ext (Ocamlc_ext.to_spec, Ocamlc_ext.Z)])]
+    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Ocamlc_ext.(ext Z)])]
 
 
 (*
