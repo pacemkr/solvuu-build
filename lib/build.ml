@@ -309,8 +309,9 @@ module Build_ocaml = struct
   module Ocamlc_ext = struct
     open Tools
 
+    type t
     type _ L.expr +=
-      | Z : Ocamlc.t L.expr
+      | Z : t L.expr
 
     let to_spec = function
       | Z -> [Ob.A "-z"]
