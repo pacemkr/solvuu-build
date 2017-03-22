@@ -151,22 +151,35 @@ module Build_ocaml = struct
     module Lang () = struct
       type _ expr = ..
 
-      type eexpr = Expr : 'a expr -> eexpr
+      (* type eexpr = Expr : 'a expr -> eexpr *)
 
       module type T = sig type t end
-      module Typ (T : T) () = struct
-        type t
+      module Typ (Ret : T) () = struct
+        type t = private unit
 
         type _ expr +=
-          Ext : ('a expr -> T.t) * 'a expr -> t expr
+          (* Ext : ('a expr -> T.t) * 'a expr -> t expr *)
+          Ext : ('a -> Ret.t) * 'a -> t expr
 
-        let ext = function
+        module Extend (M : sig
+            type t
+            val eval : t list -> Ret.t
+          end) = struct
+
+          include M
+
+          (* type _ expr += *)
+          (*   Ext : M.t expr -> t expr *)
+(* (M.t expr -> Ret.t) * *)
+          (* let eval f a = Ext (f, a) *)
+
+          let ext expr = Ext (M.eval, expr)
+        end
+
+        let eval = function
           | Ext (f, a) -> f a
           | _ -> raise (F_whale "Unknown expression.")
-
-        let ext2 f a = Ext (f, a)
       end
-
     end
 
 
@@ -210,7 +223,7 @@ module Build_ocaml = struct
       let to_specs acc = function
         | Version ->  Ob.A "-version" :: acc
         | Verbose ->  Ob.A "-verbose" :: acc
-        | a -> ext a @ acc
+        | a -> eval a @ acc
     end
 
 
@@ -221,12 +234,12 @@ module Build_ocaml = struct
         | O : string -> t L.expr
         | I : string -> t L.expr
 
-      let to_specs =
-        to_bin_specs "ocamlc" (fun acc -> function
-            | O v -> Ob.([A "-o"; A v]) @ acc
-            | I v -> Ob.([A "-I"; A v]) @ acc
-            | a -> to_specs acc a
-          )
+      let eval = fun acc -> function
+        | O v -> Ob.([A "-o"; A v]) @ acc
+        | I v -> Ob.([A "-I"; A v]) @ acc
+        | a -> to_specs acc a
+
+      let to_specs = to_bin_specs "ocamlc" eval
     end
 
 
@@ -256,7 +269,7 @@ module Build_ocaml = struct
         to_bin_specs "ocamlfind" (fun acc -> function
             | Ocamlc a -> Ocamlc.to_specs a @ acc
             | Package _ -> acc
-            | a -> ext a @ acc
+            | a -> eval a @ acc
           )
     end
 
@@ -276,7 +289,7 @@ module Build_ocaml = struct
       let to_cmds acc = function
         | Ocamlc a -> Ob.Cmd (Ob.S (Ocamlc.to_specs a)) :: acc
         | Ocamlfind a -> Ob.Cmd (Ob.S (Ocamlfind.to_specs a)) :: acc
-        | a -> ext a @ acc
+        | a -> eval a @ acc
 
 
       let to_seq t = Ob.Seq (List.fold_left ~init:[] ~f:to_cmds t)
@@ -314,23 +327,32 @@ module Build_ocaml = struct
   module Ocamlc_ext = struct
     open Tools
 
-    module T = Ocamlc.T
 
-    type t
-    type _ L.expr +=
-      | Z : t L.expr
+    module M = struct
+      type t =
+        | Z
 
-    let to_spec = function
-      | Z -> [Ob.A "-z"]
-      | _ -> raise Not_found
+      let eval = List.fold_left ~init:[] ~f:(fun acc -> function
+          | Z -> Ob.A "-z" :: acc
+        )
+    end
 
-    let ext = T.ext2 to_spec
+    module T = Ocamlc.T.Extend (M)
+
+    include T
+
+    (* type _ L.expr += *)
+    (*   | Z : t L.expr *)
+
+    (* let to_spec acc = Ocamlc.T.Extend(function *)
+    (*   | Z -> Ob.A "-z" :: acc *)
+    (*   | a -> eval acc a *)
   end
 
 
   let test =
     let open Tools.Build in
-    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Ocamlc_ext.(ext Z)])]
+    [Ocamlc Tools.Ocamlc.([O "test.out"; I "p/ath"; Ocamlc_ext.(ext [M.Z])])]
 
 
 (*
