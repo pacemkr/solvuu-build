@@ -150,21 +150,21 @@ module Build_ocaml = struct
   module Tools = struct
 
     module Expr (M : sig
-        type t
         type ret
-        val reduce : ret list -> t
+        val init : ret
+        (* val reduce : ret list -> t *)
       end) () =
     struct
       type expr = ..
 
       module type Extension = sig
         type t
-        val eval : t -> M.ret
+        val eval : init:M.ret -> t -> M.ret
       end
 
       module type Expr = sig
         type t
-        val eval : t -> M.ret
+        val eval : init:M.ret -> t -> M.ret
         val expr : t
       end
 
@@ -181,7 +181,7 @@ module Build_ocaml = struct
         end : Expr)
 
 
-      module Extend (N : Extension) () = struct
+      module Extend (N : Extension) = struct
         type expr +=
             Expr of N.t
 
@@ -189,58 +189,59 @@ module Build_ocaml = struct
       end
 
 
-      let map : type a . ((module Expr) * a) list -> M.ret list =
-        fun xs -> List.map xs ~f:(fun ((module E : Expr), _) -> E.eval E.expr)
-
-      let eval expr = map expr |> M.reduce
+      let eval : type a .
+        ((module Expr) * a) list ->
+        M.ret
+        =
+        fun xs ->
+          List.fold_left xs ~init:M.init ~f:(fun acc ((module E : Expr), _) ->
+              E.eval ~init:acc E.expr
+            )
     end
 
+
     module L = Expr (struct
-        type t = int
-        type ret = int
-        let reduce = List.fold_left ~init:0 ~f:(fun acc ret -> acc + ret)
+        type ret = int list
+        let init = []
       end) ()
 
 
     module Ext1 = struct
       module M = struct
-        type tt =
+        type x =
           | A of string
           | B of float
 
-        type t = tt list
+        type t = x list
 
-        let f acc = function
-          | A _ -> 1 + acc
-          | B _ -> 2 + acc
-
-        let eval = List.fold_left ~f ~init:0
+        let eval ~init expr =
+          (*XXX [] should be init *)
+          List.fold_left expr ~init:[] ~f:(fun acc -> function
+            | A _ -> 1 :: acc
+            | B _ -> 2 :: acc
+          ) @ init
       end
 
-      module T = (L.Extend (M) ())
-
-      include T
+      include L.Extend (M)
       include M
     end
 
 
     module Ext2 = struct
       module M = struct
-        type tt =
+        type x =
           | Z
 
-        type t = tt list
+        type t = x list
 
-        let f acc = function
-          | Z -> 2 + acc
-
-        let eval = List.fold_left ~f ~init:0
+        let eval ~init expr =
+          List.fold_left expr ~init:[] ~f:(fun acc -> function
+            | Z -> 0 :: acc
+          ) @ init
       end
 
-      module T = (L.Extend (M) ())
-
+      include L.Extend (M)
       include M
-      include T
     end
 
 
@@ -248,6 +249,7 @@ module Build_ocaml = struct
       (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
       (* let open L in *)
       let expr = [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])] in
+      (* Iteration and pattern matching. *)
       List.iter expr ~f:(function
           | (_, Ext1.Expr expr) -> Ext1.(List.iter expr ~f:(function
               | A _ -> ()
@@ -255,6 +257,9 @@ module Build_ocaml = struct
             ))
           | _ -> ()
         );
+      (* Modification. Inserting an expression. *)
+      (* let expr2 = List.fold_left expr ~init:[] ~f:(function *)
+      (*     | (_, Ext1.Expr expr) -> Ext1.(List.iter expr ~f:(function *)
       L.eval expr
       (* List.iter ~f:(fun a -> ignore (Ext1.eval a)) v *)
 
