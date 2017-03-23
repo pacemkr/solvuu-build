@@ -150,8 +150,9 @@ module Build_ocaml = struct
   module Tools = struct
 
     module Expr (M : sig
+        type t
         type ret
-        val eval : ('a -> ret) -> 'a list -> ret
+        val reduce : ret list -> t
       end) () =
     struct
       type expr = ..
@@ -167,6 +168,7 @@ module Build_ocaml = struct
         val expr : t
       end
 
+
       let make_expr
         (type a)
         (module Ext : Extension with type t = a)
@@ -179,22 +181,24 @@ module Build_ocaml = struct
         end : Expr)
 
 
-      let eval_expr ((module E : Expr), _) = E.eval E.expr
-
-      let eval = M.eval eval_expr
-
       module Extend (N : Extension) () = struct
-        type expr += Expr of N.t
+        type expr +=
+            Expr of N.t
 
         let ext t = (make_expr (module N) t, Expr t)
       end
+
+
+      let map : type a . ((module Expr) * a) list -> M.ret list =
+        fun xs -> List.map xs ~f:(fun ((module E : Expr), _) -> E.eval E.expr)
+
+      let eval expr = map expr |> M.reduce
     end
 
     module L = Expr (struct
+        type t = int
         type ret = int
-        let eval eval_expr = List.fold_left ~init:0 ~f:(fun acc x ->
-            (eval_expr x) + acc
-          )
+        let reduce = List.fold_left ~init:0 ~f:(fun acc ret -> acc + ret)
       end) ()
 
 
