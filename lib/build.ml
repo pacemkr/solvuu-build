@@ -144,52 +144,48 @@ module Build_ocaml = struct
           (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
           | _ -> None
         )
-       *)
+     *)
   end
 
   module Tools = struct
-    module Typ (Ret : sig type t end) () = struct
+
+    module Typ (M : sig
+        type t
+        type ret
+        val eval : t -> ret
+      end) () =
+    struct
       type _ expr = ..
+      type eexpr = Expr : 'a expr -> eexpr
 
+      include M
 
-      module Extend (M : sig
+      type _ expr +=
+        | Ext : M.t -> M.t expr
+
+      let eval_expr = function Expr expr -> (match expr with
+          | Ext t -> M.eval t
+          | _ -> raise Not_found
+        )
+
+      let ext expr = Expr (Ext expr)
+
+      module Extend (N : sig
           type t
-          val eval : t -> Ret.t
-        end) () =
-      struct
+          val eval : t -> ret
+        end) () = struct
 
-        include M
-
-        type eexpr = Expr : 'a expr -> eexpr
-        let (<|>) r l = [Expr r] @ [Expr l]
+        include N
 
         type _ expr +=
-          | Ext : M.t -> M.t expr
+          | Ext : N.t -> N.t expr
 
-        let eval_expr = function Expr expr -> (match expr with
-            | Ext t -> M.eval t
-            | _ -> raise Not_found
+        let eval_expr = function Expr e -> (match e with
+            | Ext t -> N.eval t
+            | a -> eval_expr (Expr a)
           )
 
         let ext expr = Expr (Ext expr)
-
-        module Extend (N : sig
-            type t
-            val eval : t -> Ret.t
-          end) () = struct
-
-          include N
-
-          type _ expr +=
-            | Ext : N.t -> N.t expr
-
-          let eval_expr = function Expr e -> (match e with
-              | Ext t -> N.eval t
-              | a -> eval_expr (Expr a)
-            )
-
-          let ext expr = Expr (Ext expr)
-        end
       end
 
       (* module Extend (Ret : SRet) (M : sig *)
@@ -207,7 +203,6 @@ module Build_ocaml = struct
       (* end *)
     end
 
-    module L = (Typ (struct type t = int end) ())
 
 
     (* module Int = struct *)
@@ -215,19 +210,21 @@ module Build_ocaml = struct
     (* end *)
 
     module Ext1M = struct
-        type tt =
-          | A of string
-          | B of float
+      type ret = int
 
-        type t = tt list
+      type tt =
+        | A of string
+        | B of float
 
-        let f acc = function
-          | A _ -> 1 + acc
-          | B _ -> 2 + acc
+      type t = tt list
 
-        let eval = List.fold_left ~f ~init:0
+      let f acc = function
+        | A _ -> 1 + acc
+        | B _ -> 2 + acc
+
+      let eval = List.fold_left ~f ~init:0
     end
-    module Ext1 = (L.Extend (Ext1M) ())
+    module Ext1 = (Typ (Ext1M) ())
 
 
     module Ext2M = struct
