@@ -150,9 +150,7 @@ module Build_ocaml = struct
   module Tools = struct
 
     module Typ (M : sig
-        type t
         type ret
-        val eval : t -> ret
       end) () =
     struct
       type expr = ..
@@ -171,13 +169,7 @@ module Build_ocaml = struct
         val expr : t
       end
 
-      type expr +=
-        | Ext of (module Expr with type t = M.t)
-
-
-      (* type exprs = ((module Extension) * (module Expr)) list *)
-
-      type ext = Eexpr : ((module Expr) * expr) -> ext
+      (* type ext = Eexpr : ((module Expr) * expr) -> ext *)
 
 
       let make_expr
@@ -190,9 +182,8 @@ module Build_ocaml = struct
           type t = Ext.t
           let eval = Ext.eval
           let expr = x
-        end : Expr with type t = a)
+        end : Expr)
         (* ((module Ext : Extension with type t = a), x) *)
-        (* end : Expr with type t = a) *)
 
 
       (* let eval exprs = *)
@@ -200,31 +191,19 @@ module Build_ocaml = struct
       (*     let module MM = (val m) in *)
       (*     MM.E.eval t *)
 
-      let ext t = Eexpr (Ext (make_expr (module M) t))
-
-
-
       module Extend (N : Extension) () = struct
+        type expr += Expr of N.t
 
-        type expr +=
-          | Ext of (module (Expr with type t = N.t))
-
-        (* let eval_expr = function *)
-        (*     | Ext t -> N.eval t *)
-        (*     | a -> eval_expr a *)
-
-        (* let ext expr = (Ext (N.eval, expr)) *)
-        let ext t = Eexpr (Ext (make_expr (module N) t))
+        let ext t = (make_expr (module N) t, Expr t)
       end
     end
 
 
+    module L = Typ (struct type ret = int end) ()
 
 
     module Ext1 = struct
       module M = struct
-        type ret = int
-
         type tt =
           | A of string
           | B of float
@@ -238,7 +217,7 @@ module Build_ocaml = struct
         let eval = List.fold_left ~f ~init:0
       end
 
-      module T = (Typ (M) ())
+      module T = (L.Extend (M) ())
 
       include T
       include M
@@ -258,7 +237,7 @@ module Build_ocaml = struct
         let eval = List.fold_left ~f ~init:0
       end
 
-      module T = (Ext1.Extend (M) ())
+      module T = (L.Extend (M) ())
 
       include M
       include T
@@ -269,15 +248,12 @@ module Build_ocaml = struct
       (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
       (* let open L in *)
       let v = [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])] in
-      List.iter v ~f:(function Ext1.Eexpr e -> begin match e with
-          | Ext1.Ext expr ->
-            let module M = (val expr) in
-            List.iter M.expr ~f:Ext1.(function
+      List.iter v ~f:(function
+          | (_, Ext1.Expr expr) -> Ext1.(List.iter expr ~f:(function
               | A _ -> ()
               | B _ -> ()
-            )
+            ))
           | _ -> ()
-        end
         );
       (* List.iter ~f:(fun a -> ignore (Ext1.eval a)) v *)
 
