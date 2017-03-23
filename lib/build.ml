@@ -155,33 +155,32 @@ module Build_ocaml = struct
         val eval : t -> ret
       end) () =
     struct
-      type _ expr = ..
-      type eexpr = Expr : 'a expr -> eexpr
+      type expr = ..
+      (* type eexpr = Expr : 'a expr -> eexpr *)
 
-      type _ expr +=
-        | Ext : M.t -> M.t expr
+      type expr +=
+        | Ext : M.t -> expr
 
-      let eval_expr = function Expr expr -> (match expr with
+      let eval_expr = function
           | Ext t -> M.eval t
           | _ -> raise Not_found
-        )
 
-      let ext expr = Expr (Ext expr)
+      let ext expr = Ext expr
+
 
       module Extend (N : sig
           type t
           val eval : t -> M.ret
         end) () = struct
 
-        type _ expr +=
-          | Ext : N.t -> N.t expr
+        type expr +=
+          | Ext : N.t -> expr
 
-        let eval_expr = function Expr e -> (match e with
+        let eval_expr = function
             | Ext t -> N.eval t
-            | a -> eval_expr (Expr a)
-          )
+            | a -> eval_expr a
 
-        let ext expr = Expr (Ext expr)
+        let ext expr = Ext expr
       end
 
       (* module Extend (Ret : SRet) (M : sig *)
