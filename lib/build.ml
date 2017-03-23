@@ -158,8 +158,6 @@ module Build_ocaml = struct
       type _ expr = ..
       type eexpr = Expr : 'a expr -> eexpr
 
-      include M
-
       type _ expr +=
         | Ext : M.t -> M.t expr
 
@@ -172,7 +170,7 @@ module Build_ocaml = struct
 
       module Extend (N : sig
           type t
-          val eval : t -> ret
+          val eval : t -> M.ret
         end) () = struct
 
         include N
@@ -205,26 +203,28 @@ module Build_ocaml = struct
 
 
 
-    (* module Int = struct *)
-    (*   type t = int *)
-    (* end *)
+    module Ext1 = struct
+      module M = struct
+        type ret = int
 
-    module Ext1M = struct
-      type ret = int
+        type tt =
+          | A of string
+          | B of float
 
-      type tt =
-        | A of string
-        | B of float
+        type t = tt list
 
-      type t = tt list
+        let f acc = function
+          | A _ -> 1 + acc
+          | B _ -> 2 + acc
 
-      let f acc = function
-        | A _ -> 1 + acc
-        | B _ -> 2 + acc
+        let eval = List.fold_left ~f ~init:0
+      end
 
-      let eval = List.fold_left ~f ~init:0
+      module T = (Typ (M) ())
+
+      include T
+      include M
     end
-    module Ext1 = (Typ (Ext1M) ())
 
 
     module Ext2M = struct
@@ -244,7 +244,7 @@ module Build_ocaml = struct
     let strip =
       (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
       (* let open L in *)
-      let open Ext1M in
+      let open Ext1 in
       let open Ext2M in
       [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])]
 
