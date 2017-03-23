@@ -165,30 +165,34 @@ module Build_ocaml = struct
       end
 
       module type Expr = sig
-        module E : Extension
-        val expr : E.t
+        (* module E : Extension *)
+        type t
+        val eval : t -> M.ret
+        val expr : t
       end
 
-      type expr +=
-        | Ext of (module Expr)
+      (* type expr += *)
+      (*   | Ext of (module Expr with type t = M.t) *)
 
 
-      (* let eval exprs = *)
-      (*   List.fold_left x ~init: ~f:(fun m -> *)
-      (*     let module MM = (val m) in *)
-      (*     MM.E.eval t *)
-
-      let expr
+      let make_expr
         (type a)
         (module Ext : Extension with type t = a)
         x
         =
         (module struct
-          module E = Ext
+          type t = Ext.t
+          let eval = Ext.eval
           let expr = x
-        end : Expr)
+        end : Expr with type t = a)
 
 
+      let eval exprs =
+        List.fold_left x ~init: ~f:(fun m ->
+          let module MM = (val m) in
+          MM.E.eval t
+
+      (* let ext t = Ext (make_expr (module M) t) *)
 
 
       module Extend (N : sig
@@ -196,14 +200,15 @@ module Build_ocaml = struct
           val eval : t -> M.ret
         end) () = struct
 
-        (* type expr += *)
-        (*   | Ext : (module * N.t -> expr *)
+        type expr +=
+          | Ext of (module (Expr with type t = N.t))
 
         (* let eval_expr = function *)
         (*     | Ext t -> N.eval t *)
         (*     | a -> eval_expr a *)
 
-        let ext expr = (Ext (N.eval, expr))
+        (* let ext expr = (Ext (N.eval, expr)) *)
+        let ext t = Ext (make_expr (module N) t)
       end
     end
 
@@ -259,12 +264,15 @@ module Build_ocaml = struct
       (* let open L in *)
       let v = [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])] in
       List.iter v ~f:(function
-          | Ext1.Ext (_, t) -> List.iter t ~f:Ext1.(function
+          | Ext1.Ext m ->
+            let module M = (val m) in
+            List.iter M.expr ~f:Ext1.(function
               | A _ -> ()
               | B _ -> ()
             )
         );
-      List.iter ~f:(fun a -> ignore (Ext1.eval_expr a)) v
+      Ext1.eval
+      List.iter ~f:(fun a -> ignore (Ext1.eval a)) v
 
 
 
