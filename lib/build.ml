@@ -214,12 +214,10 @@ module Build_ocaml = struct
 
         type t = x list
 
-        let eval ~init expr =
-          (*XXX [] should be init *)
-          List.fold_left expr ~init:[] ~f:(fun acc -> function
+        let eval = List.fold_left ~f:(fun acc -> function
             | A _ -> 1 :: acc
             | B _ -> 2 :: acc
-          ) @ init
+          )
       end
 
       include L.Extend (M)
@@ -234,10 +232,9 @@ module Build_ocaml = struct
 
         type t = x list
 
-        let eval ~init expr =
-          List.fold_left expr ~init:[] ~f:(fun acc -> function
+        let eval = List.fold_left ~f:(fun acc -> function
             | Z -> 0 :: acc
-          ) @ init
+          )
       end
 
       include L.Extend (M)
