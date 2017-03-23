@@ -148,30 +148,110 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
-    module Lang () = struct
+    module Typ (Ret : sig type t end) () = struct
       type _ expr = ..
 
-      module type T = sig type t end
-      module Typ (Ret : T) () = struct
-        type t = private unit
+
+      module Extend (M : sig
+          type t
+          val eval : t -> Ret.t
+        end) () =
+      struct
+
+        include M
+
+        type eexpr = Expr : 'a expr -> eexpr
+        let (<|>) r l = [Expr r] @ [Expr l]
 
         type _ expr +=
-          (* Ext : ('a expr -> T.t) * 'a expr -> t expr *)
-          Ext : ('a -> Ret.t) * 'a -> t expr
+          | Ext : M.t -> M.t expr
 
-        module Extend (M : sig
+        let eval_expr = function Expr expr -> (match expr with
+            | Ext t -> M.eval t
+            | _ -> raise Not_found
+          )
+
+        let ext expr = Expr (Ext expr)
+
+        module Extend (N : sig
             type t
-            val eval : t list -> Ret.t
-          end) = struct
+            val eval : t -> Ret.t
+          end) () = struct
 
-          let ext expr = Ext (M.eval, expr)
+          include N
+
+          type _ expr +=
+            | Ext : N.t -> N.t expr
+
+          let eval_expr = function Expr e -> (match e with
+              | Ext t -> N.eval t
+              | a -> eval_expr (Expr a)
+            )
+
+          let ext expr = Expr (Ext expr)
         end
-
-        let eval = function
-          | Ext (f, a) -> f a
-          | _ -> raise (F_whale "Unknown expression.")
       end
+
+      (* module Extend (Ret : SRet) (M : sig *)
+      (*     type t *)
+      (*     val eval : t expr list -> Ret.t *)
+      (*   end) () = struct *)
+
+      (*   include (Typ (Ret) ()) *)
+
+      (*   (1* type _ expr += *1) *)
+      (*   (1*   (2* Ext : ('a expr -> T.t) * 'a expr -> t expr *2) *1) *)
+      (*   (1*   Ext : ('a -> Ret.t) * 'a -> t expr *1) *)
+
+      (*   let ext expr = Ext (M.eval, expr) *)
+      (* end *)
     end
+
+    module L = (Typ (struct type t = int end) ())
+
+
+    (* module Int = struct *)
+    (*   type t = int *)
+    (* end *)
+
+    module Ext1M = struct
+        type tt =
+          | A of string
+          | B of float
+
+        type t = tt list
+
+        let f acc = function
+          | A _ -> 1 + acc
+          | B _ -> 2 + acc
+
+        let eval = List.fold_left ~f ~init:0
+    end
+    module Ext1 = (L.Extend (Ext1M) ())
+
+
+    module Ext2M = struct
+        type tt =
+          | Z
+
+        type t = tt list
+
+        let f acc = function
+          | Z -> 2 + acc
+
+        let eval = List.fold_left ~f ~init:0
+    end
+    module Ext2 = (Ext1.Extend (Ext2M) ())
+
+
+    let strip =
+      (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
+      (* let open L in *)
+      let open Ext1M in
+      let open Ext2M in
+      [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])]
+
+
 
 
     (* module Dsl (M : sig type t end) = struct *)
@@ -269,7 +349,7 @@ module Build_ocaml = struct
             )
       end
 
-      include (T.Extend (M))
+      (* include (T.Extend (M)) *)
     end
 
 
@@ -336,7 +416,7 @@ module Build_ocaml = struct
         )
     end
 
-    module T = Ocamlc.T.Extend (M)
+    module T = L.Extend (Spec_list) (M) ()
 
     include M
     include T
@@ -348,6 +428,8 @@ module Build_ocaml = struct
     (*   | Z -> Ob.A "-z" :: acc *)
     (*   | a -> eval acc a *)
   end
+
+  (* Extension of an extension *)
 
 
   let test =
