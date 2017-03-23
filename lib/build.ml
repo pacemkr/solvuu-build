@@ -177,7 +177,7 @@ module Build_ocaml = struct
 
       (* type exprs = ((module Extension) * (module Expr)) list *)
 
-      type ext = Eexpr : expr -> ext
+      type ext = Eexpr : ((module Expr) * expr) -> ext
 
 
       let make_expr
