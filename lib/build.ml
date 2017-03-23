@@ -173,8 +173,6 @@ module Build_ocaml = struct
           val eval : t -> M.ret
         end) () = struct
 
-        include N
-
         type _ expr +=
           | Ext : N.t -> N.t expr
 
@@ -203,6 +201,7 @@ module Build_ocaml = struct
 
 
 
+
     module Ext1 = struct
       module M = struct
         type ret = int
@@ -227,7 +226,8 @@ module Build_ocaml = struct
     end
 
 
-    module Ext2M = struct
+    module Ext2 = struct
+      module M = struct
         type tt =
           | Z
 
@@ -237,15 +237,18 @@ module Build_ocaml = struct
           | Z -> 2 + acc
 
         let eval = List.fold_left ~f ~init:0
+      end
+
+      module T = (Ext1.Extend (M) ())
+
+      include M
+      include T
     end
-    module Ext2 = (Ext1.Extend (Ext2M) ())
 
 
     let strip =
       (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
       (* let open L in *)
-      let open Ext1 in
-      let open Ext2M in
       [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])]
 
 
