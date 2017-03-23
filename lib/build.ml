@@ -248,7 +248,13 @@ module Build_ocaml = struct
     let strip =
       (* Ext1.([Expr (A "s"); Expr (B 1.0); Ext2.(Subtyp Z)]) *)
       (* let open L in *)
-      [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])]
+      let v = [Ext1.(ext [A "s"; B 1.0]); Ext2.(ext [Z])] in
+      List.iter v ~f:(function
+          | Ext1.Ext t -> List.iter t ~f:Ext1.(function
+              | A _ -> ()
+              | B _ -> ()
+            )
+        )
 
 
 
