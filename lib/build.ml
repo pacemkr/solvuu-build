@@ -189,7 +189,7 @@ module Build_ocaml = struct
       end
 
 
-      let eval : type a .
+      let eval (type a) :
         ((module Expr) * a) list ->
         M.ret
         =
