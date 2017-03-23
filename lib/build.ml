@@ -252,9 +252,11 @@ module Build_ocaml = struct
           | _ -> ()
         );
       (* Modification. Inserting an expression. *)
-      (* let expr2 = List.fold_left expr ~init:[] ~f:(function *)
-      (*     | (_, Ext1.Expr expr) -> Ext1.(List.iter expr ~f:(function *)
-      L.eval ~init:[] expr
+      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc -> function
+          | (_, Ext1.Expr (hd :: tail)) -> (Ext1.ext [hd]) :: (Ext2.ext [Ext2.Z] :: acc)
+          | a -> a :: acc
+        ) in
+      L.eval ~init:[] expr2
 
 
 
