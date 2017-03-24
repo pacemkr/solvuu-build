@@ -148,61 +148,79 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
+    module type Extension = sig
+      type t
+      type ret
+      val eval : ret -> t -> ret
+    end
+
+    module type Typ = sig
+      type expr = ..
+      type t
+
+      type ret
+
+      val eval : t list -> init:ret -> ret
+      (* val iter : t list -> f:(t -> unit) -> unit *)
+      (* val fold_left : t list -> f:( *)
+
+      (* include Extend *)
+    end
+
+    module type Expr2 = sig
+      type t
+      type base_t
+      val expr : t -> base_t
+    end
+
+    (* module type Extend = functor (N : Extension) -> Expr *)
+
 
     module Expr (M : sig
         type ret
       end) () =
     struct
-      type expr = ..
+      module type Extension = Extension with type ret := M.ret
 
-      module type Extension = sig
-        type t
-        val eval : M.ret -> t -> M.ret
-      end
-
-      module type Expr = sig
+      module type T = sig
         type t
         val eval : M.ret -> t -> M.ret
         val expr : t
       end
 
+      module rec Typ : Typ with type ret := M.ret = struct
+        type expr = ..
 
-      let make_expr
-        (type a)
-        (module Ext : Extension with type t = a)
-        (x : a)
-        =
-        (module struct
-          type t = Ext.t
-          let eval = Ext.eval
-          let expr = x
-        end : Expr)
+        type t = (module T) * expr
 
+        let eval = fun xs ->
+          List.fold_left xs ~f:(fun acc ((module T : T), _) ->
+              T.eval acc T.expr
+            )
+        (* let iter exprs = List.iter (xs exprs) *)
+        (* let fold_left exprs = List.fold_left (xs exprs) *)
 
-      module Extend (N : Extension) = struct
-        type expr += Expr of N.t
+        (* let xs : *)
+        (*   ((module Expr) * expr) list -> *)
+        (*   expr list *)
+        (*   = List.map ~f:(fun (_, x) -> x) *)
+      end
+      and Extend : functor (N : Extension) -> Expr2 with type t := N.t and type base_t := Typ.t = functor (N:Extension) -> struct
+        type Typ.expr += Expr of N.t
+
+        let make_expr
+          (type a)
+          (module Ext : Extension with type t = a)
+          (x : a)
+          =
+          (module struct
+            type t = Ext.t
+            let eval = Ext.eval
+            let expr = x
+          end : T)
+
         let expr t = (make_expr (module N) t, Expr t)
       end
-
-
-      let eval (type a) :
-        ((module Expr) * a) list ->
-        init:M.ret ->
-        M.ret
-        =
-        fun xs ->
-          List.fold_left xs ~f:(fun acc ((module E : Expr), _) ->
-              E.eval acc E.expr
-            )
-
-      let xs :
-        ((module Expr) * expr) list ->
-        expr list
-        = List.map ~f:(fun (_, x) -> x)
-
-      let iter exprs = List.iter (xs exprs)
-
-      let fold_left exprs = List.fold_left (xs exprs)
     end
 
 
