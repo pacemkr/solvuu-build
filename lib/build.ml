@@ -201,6 +201,8 @@ module Build_ocaml = struct
         = List.map ~f:(fun (_, x) -> x)
 
       let iter exprs = List.iter (xs exprs)
+
+      let fold_left exprs = List.fold_left (xs exprs)
     end
 
 
@@ -250,9 +252,9 @@ module Build_ocaml = struct
           | _ -> ()
         );
       (* Modification. Inserting an expression. *)
-      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc -> function
-          | (_, Ext1.Expr (Ext1.A _) as a) -> a :: (Ext2.(expr Z) :: acc)
-          | a -> a :: acc
+      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc ((_, x) as expr) -> match x with
+          | Ext1.Expr (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
+          | _ -> expr :: acc
         ) in
       L.eval ~init:[] expr2
 
