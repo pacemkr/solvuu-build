@@ -149,7 +149,7 @@ module Build_ocaml = struct
 
   module Tools = struct
 
-    module Lang (M : sig
+    module Expr (M : sig
         type ret
       end) () =
     struct
@@ -167,8 +167,11 @@ module Build_ocaml = struct
         val eval : M.ret -> t -> M.ret
       end
 
-      module Extend (E : Ext) = struct
-        type expr += Expr of E.t
+      module Extend (E : Ext) : sig
+        type expr += T of E.t
+        val expr : E.t -> t
+      end = struct
+        type expr += T of E.t
 
         let make_expr
           (type a)
@@ -181,7 +184,7 @@ module Build_ocaml = struct
             let expr = x
           end : Inst)
 
-        let expr t = (make_expr (module E) t, Expr t)
+        let expr t = (make_expr (module E) t, T t)
       end
 
       let eval = fun xs ->
@@ -199,7 +202,7 @@ module Build_ocaml = struct
     end
 
 
-    module L = Lang (struct
+    module L = Expr (struct
         type ret = int list
       end) ()
 
@@ -238,7 +241,7 @@ module Build_ocaml = struct
       let expr = [Ext1.(expr (A "s")); Ext2.(expr Z)] in
       (* Iteration and pattern matching. *)
       L.iter expr ~f:(function
-          | Ext1.Expr x -> Ext1.(match x with
+          | Ext1.T x -> Ext1.(match x with
               | A _ -> ()
               | B _ -> ()
             )
@@ -246,7 +249,7 @@ module Build_ocaml = struct
         );
       (* Modification. Inserting an expression. *)
       let expr2 = List.fold_left expr ~init:[] ~f:(fun acc ((_, x) as expr) -> match x with
-          | Ext1.Expr (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
+          | Ext1.T (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
           | _ -> expr :: acc
         ) in
       L.eval ~init:[] expr2
