@@ -14,7 +14,32 @@ open Util.Filename
 
 (* Extensible domain specific languages. *)
 module Dsl = struct
-  module Expr (M : sig type t end) () = struct
+
+    (* type expr = .. *)
+    (* type t *)
+
+    (* module type Ext = sig *)
+    (*   type t *)
+    (*   val eval : M.t -> t -> M.t *)
+    (* end *)
+
+    (* module Extend : functor (E : Ext) -> sig *)
+    (*   val expr : Ext.t -> t *)
+    (* end *)
+
+  module Expr (M : sig type t end) : sig
+    type expr = ..
+    type t = (M.t -> M.t) * expr
+    module type Ext = sig type t val eval : M.t -> t -> M.t end
+    module Extend : functor (E : Ext) -> sig
+      type expr += T of E.t
+      val expr : E.t -> t
+    end
+
+    val eval : t list -> init:M.t -> M.t
+    val iter : t list -> f:(expr -> unit) -> unit
+  end
+  = struct
     type expr = ..
     type t = (M.t -> M.t) * expr
 
@@ -23,17 +48,14 @@ module Dsl = struct
       val eval : M.t -> t -> M.t
     end
 
-    module Extend (E : Ext) : sig
-      type expr += T of E.t
-      val expr : E.t -> t
-    end = struct
+    module Extend (E : Ext) = struct
       type expr += T of E.t
 
       let eval acc ~t = E.eval acc t
       let expr t = (eval ~t, T t)
     end
 
-    let eval = fun xs ->
+    let eval xs =
       List.fold_left xs ~f:(fun acc (eval, _) ->
           eval acc
         )
@@ -49,7 +71,7 @@ module Dsl = struct
 
     module L = Expr (struct
         type t = int list
-      end) ()
+      end)
 
 
     module Ext1 = struct
@@ -183,7 +205,7 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
-    module L = Expr (struct type ret = Ob.command list end) ()
+    module L = Expr (struct type t = Ob.command list end)
 
     (* module Tool (T : L.T) () = struct *)
     (*   module L = Expr (struct type ret = Ob.spec list end) () *)
@@ -207,7 +229,7 @@ module Build_ocaml = struct
 
 
     module Ocamlc = struct
-      module L = Expr (struct type ret = Ob.spec list end) ()
+      module L = Expr (struct type t = Ob.spec list end)
 
       module M = struct
         type t =
@@ -222,7 +244,7 @@ module Build_ocaml = struct
       include L.Extend (M)
       include M
 
-      let to_specs = to_bin_specs "ocamlc" eval
+      let to_specs t = Ob.A "ocamlc" :: (L.eval ~init:[] t)
     end
 
 
