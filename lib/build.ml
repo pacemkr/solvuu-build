@@ -32,7 +32,7 @@ module Dsl = struct
     type t = (M.t -> M.t) * expr
     module type Ext = sig type t val eval : M.t -> t -> M.t end
     module Extend : functor (E : Ext) -> sig
-      type expr += T of E.t
+      type expr += private T of E.t
       val expr : E.t -> t
     end
 
@@ -102,7 +102,6 @@ module Dsl = struct
       include L.Extend (M)
       include M
     end
-
 
     let strip =
       let expr = [Ext1.(expr (A "s")); Ext2.(expr Z)] in
@@ -218,7 +217,7 @@ module Build_ocaml = struct
       Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
 
     module Compiler = struct
-      type t =
+      type t_common =
         | Version
         | Verbose
 
@@ -231,26 +230,32 @@ module Build_ocaml = struct
     module Ocamlc = struct
       module L = Expr (struct type t = Ob.spec list end)
 
-      module M = struct
+      module E = struct
+        include Compiler
+
         type t =
+          | Com of t_common
           | O of string
           | I of string
 
         let eval acc = function
+          | Com a -> eval acc a
           | O v -> Ob.([A "-o"; A v]) @ acc
           | I v -> Ob.([A "-I"; A v]) @ acc
       end
 
-      include L.Extend (M)
-      include M
+      include L.Extend (E)
+      include E
 
       let to_specs t = Ob.A "ocamlc" :: (L.eval ~init:[] t)
+      let xs = List.map ~f:expr
     end
 
 
     let f =
-      let g = Ocamlopt.(O "test") in
-      Ocamlc.eval [] g
+      Ocamlc.(xs [O "test"; Com (Verbose)])
+
+
 
     (* module Ocamlopt = struct *)
     (*   include Compiler () *)
