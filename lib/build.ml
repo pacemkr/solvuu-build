@@ -27,10 +27,18 @@ module Dsl = struct
     (*   val expr : Ext.t -> t *)
     (* end *)
 
+  module type Ext = sig
+    type acc
+    type t
+    val eval : acc -> t -> acc
+  end
+
   module Expr (M : sig type t end) : sig
     type expr = ..
     type t = (M.t -> M.t) * expr
-    module type Ext = sig type t val eval : M.t -> t -> M.t end
+
+    module type Ext = Ext with type acc := M.t
+
     module Extend : functor (E : Ext) -> sig
       type expr += private T of E.t
       val expr : E.t -> t
@@ -43,11 +51,7 @@ module Dsl = struct
     type expr = ..
     type t = (M.t -> M.t) * expr
 
-    module type Ext = sig
-      type t
-      val eval : M.t -> t -> M.t
-    end
-
+    module type Ext = Ext with type acc := M.t
     module Extend (E : Ext) = struct
       type expr += T of E.t
 
@@ -204,8 +208,6 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
-    module L = Expr (struct type t = Ob.command list end)
-
     (* module Tool (T : L.T) () = struct *)
     (*   module L = Expr (struct type ret = Ob.spec list end) () *)
 
@@ -215,6 +217,24 @@ module Build_ocaml = struct
 
     let to_bin_specs bin f flags =
       Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
+
+
+    module type Tool_spec = sig
+      val bin : string
+      type t
+      val eval : Ob.spec list -> t -> Ob.spec list
+    end
+
+    module Make (M : Tool_spec) = struct
+      module L = Expr (struct type t = Ob.spec list end)
+
+      module E = (M : L.Ext)
+      include L.Extend (E)
+
+      let to_specs t = Ob.A M.bin :: (L.eval ~init:[] t)
+      let xs = List.map ~f:expr
+    end
+
 
     module Compiler = struct
       type t_common =
@@ -228,9 +248,9 @@ module Build_ocaml = struct
 
 
     module Ocamlc = struct
-      module L = Expr (struct type t = Ob.spec list end)
+      module T = struct
+        let bin = "ocamlc"
 
-      module E = struct
         include Compiler
 
         type t =
@@ -244,33 +264,27 @@ module Build_ocaml = struct
           | I v -> Ob.([A "-I"; A v]) @ acc
       end
 
-      include L.Extend (E)
-      include E
-
-      let to_specs t = Ob.A "ocamlc" :: (L.eval ~init:[] t)
-      let xs = List.map ~f:expr
+      include Make (T)
+      include T
     end
 
+    module Ocamlopt = struct
+      include Compiler ()
+
+      type _ L.expr +=
+        | O : string -> t L.expr
+        | I : string -> t L.expr
+
+      let to_specs =
+        to_bin_specs "ocamlopt" (fun acc -> function
+            | O v -> Ob.([A "-o"; A v]) @ acc
+            | I v -> Ob.([A "-I"; A v]) @ acc
+            | a -> to_specs acc a
+          )
+    end
 
     let f =
       Ocamlc.(xs [O "test"; Com (Verbose)])
-
-
-
-    (* module Ocamlopt = struct *)
-    (*   include Compiler () *)
-
-    (*   type _ L.expr += *)
-    (*     | O : string -> t L.expr *)
-    (*     | I : string -> t L.expr *)
-
-    (*   let to_specs = *)
-    (*     to_bin_specs "ocamlopt" (fun acc -> function *)
-    (*         | O v -> Ob.([A "-o"; A v]) @ acc *)
-    (*         | I v -> Ob.([A "-I"; A v]) @ acc *)
-    (*         | a -> to_specs acc a *)
-    (*       ) *)
-    (* end *)
 
     (*
     module Ocamlfind = struct
