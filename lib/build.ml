@@ -12,65 +12,118 @@ open Util.Filename
  *
  *)
 
-(* Minimal tools and example to make creation of domain specific languages simpler.
- * Expressions and their relationships are defined by extending a single GADT type.
- **)
+(* Extensible domain specific languages. *)
 module Dsl = struct
-  type exn += F_whale of string
+  module Expr (M : sig type ret end) () = struct
+    (* module type Inst = sig *)
+    (*   type t *)
+    (*   val eval : M.ret -> t -> M.ret *)
+    (*   val expr : t *)
+    (* end *)
 
-       (*
-  (* Extensible expression vocabulary. *)
-  type _ expr = ..
+    type expr = ..
+    type t = (M.ret -> M.ret) * expr
 
-  type eexpr = Expr : 'a expr -> eexpr
+    module type Ext = sig
+      type t
+      val eval : M.ret -> t -> M.ret
+    end
 
-  type ('a, 'b, 'c) ext = ('a expr -> 'b) * 'a expr * 'c
+    module Extend (E : Ext) : sig
+      type expr += T of E.t
+      val expr : E.t -> t
+    end = struct
+      type expr += T of E.t
 
-  (* Non-unifying type minter. *)
-  module Typ () = struct
-    type 'a a
-    type 'a t = 'a a
+      (* let make_expr *)
+      (*     (type a) *)
+      (*     (module E : Ext with type t = a) *)
+      (*     (x : a) *)
+      (*   = *)
+      (*   (module struct *)
+      (*     type t = E.t *)
+      (*     let eval = E.eval *)
+      (*     let expr = x *)
+      (*   end : Inst) *)
+
+      (* Lazy fn (or Lazy.t) instead of the first class module
+       * since we basically need just one fn call? *)
+      let eval acc ~t = E.eval acc t
+      let expr t = (eval ~t, T t)
+    end
+
+    let eval = fun xs ->
+      List.fold_left xs ~f:(fun acc (eval, _) ->
+          eval acc
+        )
+
+    let xs = List.map ~f:(fun (_, x) -> x)
+    let iter exprs = List.iter (xs exprs)
+    (* let fold_left exprs = List.fold_left (xs exprs) *)
   end
 
-  (* module Kern = struct *)
-  (*   type ('a, 'b) trap = (eexpr -> 'a) * eexpr * 'b *)
-  (* end *)
-
-  type ('a, 'b) trap = 'b -> 'a expr -> 'b
-  type ('a, 'b) proc = ('a, 'b) trap -> 'b -> 'a expr -> 'b
-
-  let ktrap = raise (F_whale "Unknown expression.")
+  (* Example *)
 
 
-  let rec create_kern trap = function
-    | (proc :: procs) -> create_kern (proc trap) procs
-    | [] -> trap
+    module L = Expr (struct
+        type ret = int list
+      end) ()
 
 
-  let step kern data =
-    List.fold_left ~f:kern ~init:data
+    module Ext1 = struct
+      module M = struct
+        type t =
+          | A of string
+          | B of float
+
+        let eval acc = function
+          | A _ -> 1 :: acc
+          | B _ -> 2 :: acc
+      end
+
+      include L.Extend (M)
+      include M
+    end
 
 
-  let rec run kern stop data code =
-    if stop data code then data
-    else run kern stop (step kern data code) code
+    module Ext2 = struct
+      module M = struct
+        type t =
+          | Z
+
+        let eval acc = function
+          | Z -> 0 :: acc
+      end
+
+      include L.Extend (M)
+      include M
+    end
 
 
-  let rec run_self kern stop dfd =
-    if stop dfd then dfd
-    else run_self kern stop (step kern dfd dfd)
+    let strip =
+      let expr = [Ext1.(expr (A "s")); Ext2.(expr Z)] in
+      (* Iteration and pattern matching. *)
+      List.iter expr ~f:(function
+          | (_, Ext1.T x) -> Ext1.(match x with
+              | A _ -> ()
+              | B _ -> ()
+            )
+          | _ -> ()
+        );
+      (* Modification. Inserting an expression. *)
+      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc ((_, x) as expr) -> match x with
+          | Ext1.T (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
+          | _ -> expr :: acc
+        ) in
+      L.eval ~init:[] expr2
 
-  (* let test = *)
-  (*   let open Ocamlc in *)
-  (*   step [Ocamlc_ext.to_spec; Ocamlc.to_spec] [O "f.out"; I "p/ath"] *)
-
-  (* Simulate 555 timer? *)
-*)
 end
 
 
 module Build = struct
   include Dsl
+
+  type exn += F_whale of string
 end
 
 
@@ -148,184 +201,69 @@ module Build_ocaml = struct
   end
 
   module Tools = struct
+    module L = Expr (struct type ret = Ob.command list end) ()
 
-    module Expr (M : sig
-        type ret
-      end) () =
-    struct
-      module type Inst = sig
-        type t
-        val eval : M.ret -> t -> M.ret
-        val expr : t
-      end
+    (* module Tool (T : L.T) () = struct *)
+    (*   module L = Expr (struct type ret = Ob.spec list end) () *)
 
-      type expr = ..
-      type t = (module Inst) * expr
+    (*   let to_bin_specs bin f flags = *)
+    (*     Ob.A bin :: (List.fold_left ~init:[] ~f:f flags) *)
+    (* end *)
 
-      module type Ext = sig
-        type t
-        val eval : M.ret -> t -> M.ret
-      end
+    let to_bin_specs bin f flags =
+      Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
 
-      module Extend (E : Ext) : sig
-        type expr += T of E.t
-        val expr : E.t -> t
-      end = struct
-        type expr += T of E.t
+    module Compiler = struct
+      type t =
+        | Version
+        | Verbose
 
-        let make_expr
-          (type a)
-          (module E : Ext with type t = a)
-          (x : a)
-          =
-          (module struct
-            type t = E.t
-            let eval = E.eval
-            let expr = x
-          end : Inst)
-
-        let expr t = (make_expr (module E) t, T t)
-      end
-
-      let eval = fun xs ->
-        List.fold_left xs ~f:(fun acc ((module I : Inst), _) ->
-            I.eval acc I.expr
-          )
-
-      let xs :
-        ((module Inst) * expr) list ->
-        expr list
-        = List.map ~f:(fun (_, x) -> x)
-
-      let iter exprs = List.iter (xs exprs)
-      (* let fold_left exprs = List.fold_left (xs exprs) *)
-    end
-
-
-    module L = Expr (struct
-        type ret = int list
-      end) ()
-
-
-    module Ext1 = struct
-      module M = struct
-        type t =
-          | A of string
-          | B of float
-
-        let eval acc = function
-          | A _ -> 1 :: acc
-          | B _ -> 2 :: acc
-      end
-
-      include L.Extend (M)
-      include M
-    end
-
-
-    module Ext2 = struct
-      module M = struct
-        type t =
-          | Z
-
-        let eval acc = function
-            | Z -> 0 :: acc
-      end
-
-      include L.Extend (M)
-      include M
-    end
-
-
-    let strip =
-      let expr = [Ext1.(expr (A "s")); Ext2.(expr Z)] in
-      (* Iteration and pattern matching. *)
-      L.iter expr ~f:(function
-          | Ext1.T x -> Ext1.(match x with
-              | A _ -> ()
-              | B _ -> ()
-            )
-          | _ -> ()
-        );
-      (* Modification. Inserting an expression. *)
-      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc ((_, x) as expr) -> match x with
-          | Ext1.T (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
-          | _ -> expr :: acc
-        ) in
-      L.eval ~init:[] expr2
-
-
-
-
-
-
-    module L = Lang ()
-
-    module Spec_list = struct
-      type t = Ob.spec list
-    end
-
-    module Cmd_list = struct
-      type t = Ob.command list
-    end
-
-    module Tool (T : L.T) () = struct
-      module T = L.Typ (T) ()
-      include T
-
-
-      let to_bin_specs bin f flags =
-        Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
-    end
-
-      let to_bin_specs bin f flags =
-        Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
-
-    module Compiler () = struct
-      include (Tool (Spec_list) ())
-
-      type _ L.expr +=
-        | Version : t L.expr
-        | Verbose : t L.expr
-
-      let to_specs acc = function
+      let eval acc = function
         | Version ->  Ob.A "-version" :: acc
         | Verbose ->  Ob.A "-verbose" :: acc
-        | a -> eval a @ acc
     end
 
 
     module Ocamlc = struct
-      include Compiler ()
+      module L = Expr (struct type ret = Ob.spec list end) ()
 
-      type _ L.expr +=
-        | O : string -> t L.expr
-        | I : string -> t L.expr
+      module M = struct
+        type t =
+          | O of string
+          | I of string
 
-      let eval = fun acc -> function
-        | O v -> Ob.([A "-o"; A v]) @ acc
-        | I v -> Ob.([A "-I"; A v]) @ acc
-        | a -> to_specs acc a
+        let eval acc = function
+          | O v -> Ob.([A "-o"; A v]) @ acc
+          | I v -> Ob.([A "-I"; A v]) @ acc
+      end
+
+      include L.Extend (M)
+      include M
 
       let to_specs = to_bin_specs "ocamlc" eval
     end
 
 
-    module Ocamlopt = struct
-      include Compiler ()
+    let f =
+      let g = Ocamlopt.(O "test") in
+      Ocamlc.eval [] g
 
-      type _ L.expr +=
-        | O : string -> t L.expr
-        | I : string -> t L.expr
+    (* module Ocamlopt = struct *)
+    (*   include Compiler () *)
 
-      let to_specs =
-        to_bin_specs "ocamlopt" (fun acc -> function
-            | O v -> Ob.([A "-o"; A v]) @ acc
-            | I v -> Ob.([A "-I"; A v]) @ acc
-            | a -> to_specs acc a
-          )
-    end
+    (*   type _ L.expr += *)
+    (*     | O : string -> t L.expr *)
+    (*     | I : string -> t L.expr *)
 
+    (*   let to_specs = *)
+    (*     to_bin_specs "ocamlopt" (fun acc -> function *)
+    (*         | O v -> Ob.([A "-o"; A v]) @ acc *)
+    (*         | I v -> Ob.([A "-I"; A v]) @ acc *)
+    (*         | a -> to_specs acc a *)
+    (*       ) *)
+    (* end *)
+
+    (*
     module Ocamlfind = struct
       (* include (Tool (Spec_list) ()) *)
 
@@ -346,8 +284,9 @@ module Build_ocaml = struct
 
       (* include (T.Extend (M)) *)
     end
+    *)
 
-
+    module L = Expr (struct type ret = Ob.command list end) ()
     (* module Build = struct *)
     (*   module Typ = struct *)
     (*     type t = Ob.command list *)
