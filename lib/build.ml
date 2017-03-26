@@ -14,19 +14,13 @@ open Util.Filename
 
 (* Extensible domain specific languages. *)
 module Dsl = struct
-  module Expr (M : sig type ret end) () = struct
-    (* module type Inst = sig *)
-    (*   type t *)
-    (*   val eval : M.ret -> t -> M.ret *)
-    (*   val expr : t *)
-    (* end *)
-
+  module Expr (M : sig type t end) () = struct
     type expr = ..
-    type t = (M.ret -> M.ret) * expr
+    type t = (M.t -> M.t) * expr
 
     module type Ext = sig
       type t
-      val eval : M.ret -> t -> M.ret
+      val eval : M.t -> t -> M.t
     end
 
     module Extend (E : Ext) : sig
@@ -35,19 +29,6 @@ module Dsl = struct
     end = struct
       type expr += T of E.t
 
-      (* let make_expr *)
-      (*     (type a) *)
-      (*     (module E : Ext with type t = a) *)
-      (*     (x : a) *)
-      (*   = *)
-      (*   (module struct *)
-      (*     type t = E.t *)
-      (*     let eval = E.eval *)
-      (*     let expr = x *)
-      (*   end : Inst) *)
-
-      (* Lazy fn (or Lazy.t) instead of the first class module
-       * since we basically need just one fn call? *)
       let eval acc ~t = E.eval acc t
       let expr t = (eval ~t, T t)
     end
@@ -62,11 +43,12 @@ module Dsl = struct
     (* let fold_left exprs = List.fold_left (xs exprs) *)
   end
 
+
   (* Example *)
 
 
     module L = Expr (struct
-        type ret = int list
+        type t = int list
       end) ()
 
 
