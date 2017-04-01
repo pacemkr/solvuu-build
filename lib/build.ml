@@ -15,18 +15,6 @@ open Util.Filename
 (* Extensible domain specific languages. *)
 module Dsl = struct
 
-    (* type expr = .. *)
-    (* type t *)
-
-    (* module type Ext = sig *)
-    (*   type t *)
-    (*   val eval : M.t -> t -> M.t *)
-    (* end *)
-
-    (* module Extend : functor (E : Ext) -> sig *)
-    (*   val expr : Ext.t -> t *)
-    (* end *)
-
   module type Ext = sig
     type acc
     type t
@@ -68,62 +56,6 @@ module Dsl = struct
     let iter exprs = List.iter (xs exprs)
     (* let fold_left exprs = List.fold_left (xs exprs) *)
   end
-
-
-  (* Example *)
-
-
-    module L = Expr (struct
-        type t = int list
-      end)
-
-
-    module Ext1 = struct
-      module M = struct
-        type t =
-          | A of string
-          | B of float
-
-        let eval acc = function
-          | A _ -> 1 :: acc
-          | B _ -> 2 :: acc
-      end
-
-      include L.Extend (M)
-      include M
-    end
-
-
-    module Ext2 = struct
-      module M = struct
-        type t =
-          | Z
-
-        let eval acc = function
-          | Z -> 0 :: acc
-      end
-
-      include L.Extend (M)
-      include M
-    end
-
-    let strip =
-      let expr = [Ext1.(expr (A "s")); Ext2.(expr Z)] in
-      (* Iteration and pattern matching. *)
-      List.iter expr ~f:(function
-          | (_, Ext1.T x) -> Ext1.(match x with
-              | A _ -> ()
-              | B _ -> ()
-            )
-          | _ -> ()
-        );
-      (* Modification. Inserting an expression. *)
-      let expr2 = List.fold_left expr ~init:[] ~f:(fun acc ((_, x) as expr) -> match x with
-          | Ext1.T (Ext1.A _) -> expr :: (Ext2.(expr Z) :: acc)
-          | _ -> expr :: acc
-        ) in
-      L.eval ~init:[] expr2
-
 end
 
 
@@ -191,29 +123,21 @@ module Build_ocaml = struct
         | Mli f -> (Mli.path f) :: acc
         | a -> trap acc a
 
-    (*
+
     let ls_dir dir =
-      let open File in
       let all_files =
         try Sys.readdir dir |> Array.to_list
         with _ -> []
       in
       List.filter_map all_files ~f:(fun path ->
           match extension path with
-          | ".mli" -> Some (File.Mli (Mli.of_path path))
+          | ".mli" -> Some (Mli (Mli.of_path path))
           (* | ".ml" -> Some (Src (Ml.of_path (dir ^ "/" ^ path))) *)
           | _ -> None
         )
-     *)
   end
 
   module Tools = struct
-    (* module Tool (T : L.T) () = struct *)
-    (*   module L = Expr (struct type ret = Ob.spec list end) () *)
-
-    (*   let to_bin_specs bin f flags = *)
-    (*     Ob.A bin :: (List.fold_left ~init:[] ~f:f flags) *)
-    (* end *)
 
     let to_bin_specs bin f flags =
       Ob.A bin :: (List.fold_left ~init:[] ~f:f flags)
@@ -254,12 +178,13 @@ module Build_ocaml = struct
         include Compiler
 
         type t =
-          | Com of t_common
+          (* | Com of t_common *)
+          (* | Flags of t list *)
           | O of string
           | I of string
 
         let eval acc = function
-          | Com a -> eval acc a
+          (* | Com a -> eval acc a *)
           | O v -> Ob.([A "-o"; A v]) @ acc
           | I v -> Ob.([A "-I"; A v]) @ acc
       end
@@ -267,24 +192,6 @@ module Build_ocaml = struct
       include Make (T)
       include T
     end
-
-    module Ocamlopt = struct
-      include Compiler ()
-
-      type _ L.expr +=
-        | O : string -> t L.expr
-        | I : string -> t L.expr
-
-      let to_specs =
-        to_bin_specs "ocamlopt" (fun acc -> function
-            | O v -> Ob.([A "-o"; A v]) @ acc
-            | I v -> Ob.([A "-I"; A v]) @ acc
-            | a -> to_specs acc a
-          )
-    end
-
-    let f =
-      Ocamlc.(xs [O "test"; Com (Verbose)])
 
     (*
     module Ocamlfind = struct
@@ -333,67 +240,7 @@ module Build_ocaml = struct
   end
 
 
-  (* New tool *)
-  (* module Ar = struct *)
-  (*   include Tools.Tool *)
 
-  (* end *)
-
-  (* module Ar = struct *)
-  (*   module Ar = struct *)
-  (*     include Tools.Tool *)
-
-  (*     type expr += *)
-  (*       | X *)
-  (*       | T *)
-
-  (*     let to_spec = *)
-  (*       bin_spec "ar" (fun acc -> function *)
-  (*         | X -> (Ob.A "-x") :: acc *)
-  (*         | a -> tool_spec acc a *)
-  (*       ) *)
-  (*   end *)
-
-  (*   type Tools.expr += *)
-  (*     | Ar of Ar.expr list *)
-  (* end *)
-
-
-  (* Extension *)
-  module Ocamlc_ext = struct
-    open Tools
-
-
-    module M = struct
-      type t =
-        | Z
-
-      let eval = List.fold_left ~init:[] ~f:(fun acc -> function
-          | Z -> Ob.A "-z" :: acc
-        )
-    end
-
-    module T = L.Extend (Spec_list) (M) ()
-
-    include M
-    include T
-
-    (* type _ L.expr += *)
-    (*   | Z : t L.expr *)
-
-    (* let to_spec acc = Ocamlc.T.Extend(function *)
-    (*   | Z -> Ob.A "-z" :: acc *)
-    (*   | a -> eval acc a *)
-  end
-
-  (* Extension of an extension *)
-
-
-  let test =
-    (* let open Tools.Build in *)
-    Tools.Ocamlc.([O "test.out"; I "p/ath"; Ocamlc_ext.(ext [Z])])
-
-(*
   module Build = struct
     module T = Typ ()
 
@@ -432,9 +279,9 @@ module Build_ocaml = struct
 
 
   module Lib = struct
-    type t = ..
-    type t +=
-      | Compiled_intf : Build.rule -> t
+    (* type t = .. *)
+    (* type t += *)
+    (*   | Compiled_intf : Build.rule -> t *)
 
     let compile_mli mli_file =
       let open File in
@@ -442,6 +289,7 @@ module Build_ocaml = struct
       let deps = [Mli mli_file] in
       let prods = [Cmi cmi_file] in
       let cmds =
+        let open Tools.Ocamlfind in
         (Tools.Ocamlc (Ocamlc.(Expr (O ((Cmi.path cmi_file), Pos ((Mli.path mli_file), End)))), Tools.End))
         (* (Ocamlc (Expr (O ("test.out", Trap (ocamlc_ext, (Expr (I ("inc/path", End))), End)))), End) *)
       in
@@ -470,10 +318,6 @@ module Build_ocaml = struct
   end
 
 
-
-
-
-
   let lib ~dir =
     Ocamlbuild_plugin.dispatch @@ function
     | Ocamlbuild_plugin.After_rules -> (
@@ -481,12 +325,11 @@ module Build_ocaml = struct
         Ocamlbuild_plugin.clear_rules();
 
         ignore (
-          ls_dir dir |>
-          Dsl.run_self Lib.kern Lib.stop
+          File.ls_dir dir |>
+          (* Dsl.run_self Lib.kern Lib.stop *)
         )
       )
     | _ -> ()
-           *)
 end
 
 
