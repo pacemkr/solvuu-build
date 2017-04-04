@@ -278,6 +278,9 @@ module Build_ocaml = struct
   end
 
 
+
+
+
   module Lib = struct
     (* type t = .. *)
     (* type t += *)
@@ -314,6 +317,10 @@ module Build_ocaml = struct
     (* let create files = *)
     (*   Dsl.run_self kern files *)
 
+    let build dir =
+      let files = File.ls_dir dir in
+
+
 
   end
 
@@ -321,13 +328,8 @@ module Build_ocaml = struct
   let lib ~dir =
     Ocamlbuild_plugin.dispatch @@ function
     | Ocamlbuild_plugin.After_rules -> (
-
         Ocamlbuild_plugin.clear_rules();
-
-        ignore (
-          File.ls_dir dir |>
-          (* Dsl.run_self Lib.kern Lib.stop *)
-        )
+        Lib.build dir
       )
     | _ -> ()
 end
